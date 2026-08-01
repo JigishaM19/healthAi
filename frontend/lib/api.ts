@@ -1,4 +1,4 @@
-import { getAuthHeaders } from "./auth";
+import { getAuthHeaders, removeToken } from "./auth";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -20,6 +20,15 @@ async function request(endpoint: string, options: RequestInit = {}) {
       const errJson = await response.json();
       errorDetail = errJson.detail || JSON.stringify(errJson);
     } catch (_) {}
+
+    if (response.status === 401) {
+      removeToken();
+      if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+        window.location.href = "/login?expired=1";
+      }
+      throw new Error("Session expired. Please log in again.");
+    }
+
     throw new Error(errorDetail);
   }
 
@@ -59,13 +68,21 @@ export const api = {
 
   // Universal Medical Document Intelligence
   uploadDocument: async (formData: FormData) => {
-    const token = typeof window !== "undefined" ? localStorage.getItem("healthai_token") : null;
     const response = await fetch(`${API_BASE_URL}/documents/upload`, {
       method: "POST",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      headers: {
+        ...getAuthHeaders(),
+      },
       body: formData,
     });
     if (!response.ok) {
+      if (response.status === 401) {
+        removeToken();
+        if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+          window.location.href = "/login?expired=1";
+        }
+        throw new Error("Session expired. Please log in again.");
+      }
       const err = await response.json().catch(() => ({}));
       throw new Error(err.detail || "Document upload failed");
     }
