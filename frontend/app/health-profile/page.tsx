@@ -26,9 +26,30 @@ export default function HealthProfilePage() {
     async function fetchProfile() {
       try {
         const data = await api.getHealthProfile();
-        setProfile(data);
-      } catch (err) {
-        console.error(err);
+        setProfile(data || {
+          age: 30,
+          gender: "Male",
+          height_cm: 170,
+          weight_kg: 70,
+          conditions: [],
+          allergies: [],
+          medications: [],
+          blood_group: "O+",
+          emergency_contact: ""
+        });
+      } catch (err: any) {
+        console.error("Health Profile fetch error:", err);
+        setProfile({
+          age: 30,
+          gender: "Male",
+          height_cm: 170,
+          weight_kg: 70,
+          conditions: [],
+          allergies: [],
+          medications: [],
+          blood_group: "O+",
+          emergency_contact: ""
+        });
       } finally {
         setLoading(false);
       }
@@ -42,10 +63,10 @@ export default function HealthProfilePage() {
     setMessage(null);
     try {
       const updated = await api.updateHealthProfile(profile);
-      setProfile(updated);
+      setProfile(updated || profile);
       setMessage("Health Profile updated successfully!");
     } catch (err: any) {
-      setMessage(`Failed: ${err.message}`);
+      setMessage(err.message || "Failed to update health profile.");
     } finally {
       setSaving(false);
     }

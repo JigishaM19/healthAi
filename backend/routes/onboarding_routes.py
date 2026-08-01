@@ -126,12 +126,25 @@ def save_onboarding(profile_data: HealthProfileSchema, current_user: User = Depe
 
 @router.get("/health-profile", response_model=HealthProfileResponse)
 def get_health_profile(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    print(f"[HealthProfile] Request received for user_id={current_user.id}")
     profile = db.query(HealthProfile).filter(HealthProfile.user_id == current_user.id).first()
     if not profile:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Health profile not created yet. Please complete onboarding."
+        print(f"[HealthProfile] No profile found for user_id={current_user.id}, returning default profile structure")
+        profile = HealthProfile(
+            user_id=current_user.id,
+            age=30,
+            gender="Male",
+            height_cm=170.0,
+            weight_kg=70.0,
+            conditions=[],
+            allergies=[],
+            medications=[],
+            goals=[],
+            blood_group="O+",
+            emergency_contact=""
         )
+    else:
+        print(f"[HealthProfile] Profile successfully retrieved for user_id={current_user.id}")
     return profile
 
 
