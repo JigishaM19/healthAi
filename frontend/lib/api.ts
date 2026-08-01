@@ -49,14 +49,14 @@ async function request(endpoint: string, options: RequestInit = {}) {
 
 async function uploadDocument(file: File | FormData, documentType: string = "general_medical") {
   const token = getToken();
-  let bodyData: FormData;
+  let formData: FormData;
 
   if (file instanceof FormData) {
-    bodyData = file;
+    formData = file;
   } else {
-    bodyData = new FormData();
-    bodyData.append("file", file);
-    bodyData.append("document_type", documentType);
+    formData = new FormData();
+    formData.append("file", file);
+    formData.append("document_type", documentType);
   }
 
   const headers: Record<string, string> = {};
@@ -67,7 +67,7 @@ async function uploadDocument(file: File | FormData, documentType: string = "gen
   const res = await fetch(`${API_BASE_URL}/documents/upload`, {
     method: "POST",
     headers,
-    body: bodyData,
+    body: formData,
   });
 
   if (res.status === 401) {
@@ -118,7 +118,7 @@ export const api = {
     return request(`/timeline${query ? `?${query}` : ""}`, { method: "GET" });
   },
   getTimelineEvents: (event_type?: string) => {
-    const query = event_type && event_type !== "all" ? `?event_type=${encodeURIComponent(event_type)}` : "";
+    const query = event_type && event_type !== "all" ? `?event_type=${event_type}` : "";
     return request(`/timeline${query}`, { method: "GET" });
   },
   createTimelineEvent: (data: any) => request("/timeline/event", { method: "POST", body: JSON.stringify(data) }),
@@ -130,8 +130,8 @@ export const api = {
     const query = new URLSearchParams(params as any).toString();
     return request(`/documents${query ? `?${query}` : ""}`, { method: "GET" });
   },
-  getDocumentDetails: (id: number) => request(`/documents/${id}`, { method: "GET" }),
   getDocument: (id: number) => request(`/documents/${id}`, { method: "GET" }),
+  getDocumentDetails: (id: number) => request(`/documents/${id}`, { method: "GET" }),
   deleteDocument: (id: number) => request(`/documents/${id}`, { method: "DELETE" }),
 
   // Health Memory & Lab Trends Engine
