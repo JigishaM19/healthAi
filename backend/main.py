@@ -1,11 +1,12 @@
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from database import engine, Base
+from database import engine, Base, apply_schema_migrations
 from routes import auth_routes, onboarding_routes, chat_routes, user_routes, timeline_routes, report_routes, memory_routes, settings_routes, verification_routes, nutrition_routes, medication_routes
 
 # Automatically create SQLite/PostgreSQL database tables on server start
 Base.metadata.create_all(bind=engine)
+apply_schema_migrations()
 
 app = FastAPI(
     title="HealthAI API",

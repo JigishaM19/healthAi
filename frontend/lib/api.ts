@@ -1,48 +1,99 @@
-import { getAuthHeaders, removeToken } from "./auth";
-
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+import { getToken, removeToken } from "./auth";
+
 async function request(endpoint: string, options: RequestInit = {}) {
-  const headers = {
+  const token = getToken();
+
+  const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...getAuthHeaders(),
-    ...(options.headers || {}),
+    ...(options.headers as Record<string, string>),
   };
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
     headers,
   });
 
-  if (!response.ok) {
-    let errorDetail = "An unexpected error occurred.";
-    try {
-      const errJson = await response.json();
-      errorDetail = errJson.detail || JSON.stringify(errJson);
-    } catch (_) {}
-
-    if (response.status === 401) {
-      removeToken();
-      if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
-        window.location.href = "/login?expired=1";
-      }
-      throw new Error("Session expired. Please log in again.");
+  if (res.status === 401) {
+    removeToken();
+    if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+      window.location.href = "/login?expired=1";
     }
-
-    throw new Error(errorDetail);
+    throw new Error("Session expired. Please log in again.");
   }
 
-  return response.json();
+  if (!res.ok) {
+    let errorMsg = "An error occurred";
+    try {
+      const errData = await res.json();
+      errorMsg = errData.detail || errData.message || errorMsg;
+    } catch (e) {
+      // Failed to parse JSON error
+    }
+    throw new Error(errorMsg);
+  }
+
+  // Handle binary PDF or file downloads
+  const contentType = res.headers.get("content-type");
+  if (contentType && (contentType.includes("application/pdf") || contentType.includes("application/octet-stream"))) {
+    return res.blob();
+  }
+
+  return res.json();
+}
+
+async function uploadDocument(file: File, documentType: string = "general_medical") {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("document_type", documentType);
+
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${API_BASE_URL}/documents/upload`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+
+  if (res.status === 401) {
+    removeToken();
+    if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+      window.location.href = "/login?expired=1";
+    }
+    throw new Error("Session expired. Please log in again.");
+  }
+
+  if (!res.ok) {
+    let errorMsg = "Upload failed";
+    try {
+      const errData = await res.json();
+      errorMsg = errData.detail || errData.message || errorMsg;
+    } catch (e) {
+      // Failed to parse JSON
+    }
+    throw new Error(errorMsg);
+  }
+
+  return res.json();
 }
 
 export const api = {
   // Auth
   signup: (data: any) => request("/signup", { method: "POST", body: JSON.stringify(data) }),
   login: (data: any) => request("/login", { method: "POST", body: JSON.stringify(data) }),
-  getMe: () => request("/me", { method: "GET" }),
-  logout: () => request("/logout", { method: "POST" }),
+  getProfile: () => request("/profile", { method: "GET" }),
+  updateProfile: (data: any) => request("/profile", { method: "PUT", body: JSON.stringify(data) }),
 
-  // Health Profile & Onboarding
+  // Onboarding
   saveOnboarding: (data: any) => request("/onboarding", { method: "POST", body: JSON.stringify(data) }),
   getHealthProfile: () => request("/health-profile", { method: "GET" }),
   updateHealthProfile: (data: any) => request("/health-profile", { method: "PUT", body: JSON.stringify(data) }),
@@ -50,52 +101,27 @@ export const api = {
 
   // Chat
   sendMessage: (message: string, conversation_id?: number) =>
-    request("/chat", {
-      method: "POST",
-      body: JSON.stringify({ message, conversation_id }),
-    }),
-  getChatHistory: () => request("/history", { method: "GET" }),
-  deleteConversation: (id: number) => request(`/history/${id}`, { method: "DELETE" }),
-
-  // User Profile
-  getUserProfile: () => request("/profile", { method: "GET" }),
-  updateUserProfile: (data: any) => request("/profile", { method: "PUT", body: JSON.stringify(data) }),
+    request("/chat", { method: "POST", body: JSON.stringify({ message, conversation_id }) }),
+  listHistory: () => request("/history", { method: "GET" }),
 
   // Timeline
-  getTimelineEvents: (filterType: string = "all") => request(`/timeline?type=${filterType}`, { method: "GET" }),
-  getTimelineStats: () => request("/timeline/stats", { method: "GET" }),
-  createTimelineEvent: (data: any) => request("/timeline/event", { method: "POST", body: JSON.stringify(data) }),
-
-  // Universal Medical Document Intelligence
-  uploadDocument: async (formData: FormData) => {
-    const response = await fetch(`${API_BASE_URL}/documents/upload`, {
-      method: "POST",
-      headers: {
-        ...getAuthHeaders(),
-      },
-      body: formData,
-    });
-    if (!response.ok) {
-      if (response.status === 401) {
-        removeToken();
-        if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
-          window.location.href = "/login?expired=1";
-        }
-        throw new Error("Session expired. Please log in again.");
-      }
-      const err = await response.json().catch(() => ({}));
-      throw new Error(err.detail || "Document upload failed");
-    }
-    return response.json();
+  getTimeline: (params?: { event_type?: string; start_date?: string; end_date?: string }) => {
+    const query = new URLSearchParams(params as any).toString();
+    return request(`/timeline${query ? `?${query}` : ""}`, { method: "GET" });
   },
-  extractDocument: (id: number) => request(`/documents/${id}/extract`, { method: "POST" }),
-  analyzeDocument: (id: number) => request(`/documents/${id}/analyze`, { method: "POST" }),
-  listDocuments: () => request("/documents", { method: "GET" }),
-  getDocument: (id: number) => request(`/documents/${id}`, { method: "GET" }),
-  deleteDocument: (id: number) => request(`/documents/${id}`, { method: "DELETE" }),
-  listMedications: () => request("/medications", { method: "GET" }),
+  createTimelineEvent: (data: any) => request("/timeline/event", { method: "POST", body: JSON.stringify(data) }),
+  getTimelineStats: () => request("/timeline/stats", { method: "GET" }),
 
-  // Health Memory & Lab Trend Comparison
+  // Medical Reports
+  uploadDocument,
+  listDocuments: (params?: { document_type?: string; date?: string }) => {
+    const query = new URLSearchParams(params as any).toString();
+    return request(`/documents${query ? `?${query}` : ""}`, { method: "GET" });
+  },
+  getDocumentDetails: (id: number) => request(`/documents/${id}`, { method: "GET" }),
+  deleteDocument: (id: number) => request(`/documents/${id}`, { method: "DELETE" }),
+
+  // Health Memory & Lab Trends Engine
   getHealthInsights: () => request("/health-insights", { method: "GET" }),
   getHealthTrends: () => request("/health-trends", { method: "GET" }),
   getParameterHistory: (testName: string) => request(`/health-trends/${encodeURIComponent(testName)}`, { method: "GET" }),
@@ -106,9 +132,15 @@ export const api = {
   getSettings: () => request("/settings", { method: "GET" }),
   updateSettingsAccount: (data: any) => request("/settings/account", { method: "PUT", body: JSON.stringify(data) }),
   updateSettingsPassword: (data: any) => request("/settings/password", { method: "PUT", body: JSON.stringify(data) }),
+  toggle2FA: (data: { enabled: boolean; preferred_method?: string }) => request("/settings/2fa/toggle", { method: "POST", body: JSON.stringify(data) }),
+  getSessions: () => request("/settings/sessions", { method: "GET" }),
   updateSettingsNotifications: (data: any) => request("/settings/notifications", { method: "PUT", body: JSON.stringify(data) }),
+  updateSettingsPrivacy: (data: { anonymized_research_sharing: number }) => request("/settings/privacy", { method: "PUT", body: JSON.stringify(data) }),
   updateSettingsAppearance: (data: any) => request("/settings/appearance", { method: "PUT", body: JSON.stringify(data) }),
   updateSettingsLanguage: (data: any) => request("/settings/language", { method: "PUT", body: JSON.stringify(data) }),
+  getConnectedDevices: () => request("/settings/devices", { method: "GET" }),
+  connectDevice: (provider: string, account_id?: string) => request("/settings/devices/connect", { method: "POST", body: JSON.stringify({ provider, account_id }) }),
+  disconnectDevice: (provider: string) => request("/settings/devices/disconnect", { method: "POST", body: JSON.stringify({ provider }) }),
   exportHealthData: () => request("/settings/export", { method: "POST" }),
   logoutAllDevices: () => request("/settings/logout-all", { method: "POST" }),
   deleteAccount: (password: string) => request("/settings/account", { method: "DELETE", body: JSON.stringify({ password }) }),
@@ -137,4 +169,11 @@ export const api = {
   getGroceryList: () => request("/nutrition/grocery-list", { method: "GET" }),
   getWorkoutPlan: () => request("/nutrition/workout-plan", { method: "GET" }),
   getDailyRoutine: () => request("/nutrition/daily-routine", { method: "GET" }),
+
+  // Medication Safety Intelligence Engine
+  checkMedicationInteractions: (medications: string[]) => request("/medications/check-interactions", { method: "POST", body: JSON.stringify({ medications }) }),
+  getMedicationSafetyReport: () => request("/medications/safety-report", { method: "GET" }),
+  getMedicationSchedule: () => request("/medications/schedule", { method: "GET" }),
+  analyzePrescriptionMedications: (extracted_medications: string[], document_id?: number) => request("/medications/analyze-prescription", { method: "POST", body: JSON.stringify({ extracted_medications, document_id }) }),
+  getMedicationSafetyPdfUrl: () => `${API_BASE_URL}/medications/safety-report/pdf`
 };

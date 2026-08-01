@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
+import json
 
 from database import get_db
 from models import User, UserSettings
@@ -10,6 +11,11 @@ from services.settings_service import (
     get_or_create_user_settings,
     update_account_info,
     update_password_info,
+    toggle_2fa_settings,
+    get_user_active_sessions,
+    logout_other_sessions,
+    get_connected_wearables,
+    toggle_wearable_connection,
     export_user_health_data,
     delete_user_account
 )
@@ -25,6 +31,10 @@ class PasswordUpdateInput(BaseModel):
     current_password: str
     new_password: str
 
+class Toggle2FAInput(BaseModel):
+    enabled: bool
+    preferred_method: Optional[str] = "email"
+
 class NotificationUpdateInput(BaseModel):
     medication_reminders: Optional[int] = 1
     hydration_reminders: Optional[int] = 1
@@ -32,6 +42,11 @@ class NotificationUpdateInput(BaseModel):
     sleep_reminders: Optional[int] = 1
     appointment_reminders: Optional[int] = 1
     report_notifications: Optional[int] = 1
+    email_notifications: Optional[int] = 1
+    sms_notifications: Optional[int] = 1
+
+class PrivacyUpdateInput(BaseModel):
+    anonymized_research_sharing: Optional[int] = 0
 
 class AppearanceUpdateInput(BaseModel):
     theme: Optional[str] = "dark"
@@ -44,6 +59,13 @@ class LanguageUpdateInput(BaseModel):
     date_format: Optional[str] = "YYYY-MM-DD"
     time_format: Optional[str] = "12h"
     units: Optional[str] = "Metric"
+
+class ConnectDeviceInput(BaseModel):
+    provider: str
+    account_id: Optional[str] = None
+
+class DisconnectDeviceInput(BaseModel):
+    provider: str
 
 class AccountDeleteInput(BaseModel):
     password: str
@@ -59,7 +81,8 @@ def get_settings(
         "user": {
             "id": current_user.id,
             "name": current_user.name,
-            "email": current_user.email
+            "email": current_user.email,
+            "phone_number": current_user.phone_number
         },
         "settings": st
     }
@@ -72,21 +95,46 @@ def update_account(
 ):
     user = update_account_info(db, current_user.id, body.name, body.email, body.phone_number)
     return {
-        "message": "Account information updated successfully",
+        "message": "Account profile updated successfully",
         "user": {
             "id": user.id,
             "name": user.name,
-            "email": user.email
+            "email": user.email,
+            "phone_number": user.phone_number
         }
     }
 
 @router.put("/password")
+@router.put("/security")
 def update_password(
     body: PasswordUpdateInput,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     return update_password_info(db, current_user.id, body.current_password, body.new_password)
+
+@router.post("/2fa/toggle")
+def toggle_2fa(
+    body: Toggle2FAInput,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return toggle_2fa_settings(db, current_user.id, 1 if body.enabled else 0, body.preferred_method)
+
+@router.get("/sessions")
+def get_sessions(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return get_user_active_sessions(db, current_user.id)
+
+@router.post("/logout-others")
+@router.post("/logout-all")
+def logout_all_devices(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return logout_other_sessions(db, current_user.id)
 
 @router.put("/notifications")
 def update_notifications(
@@ -103,6 +151,17 @@ def update_notifications(
     st.report_notifications = body.report_notifications
     db.commit()
     return {"message": "Notification preferences updated successfully"}
+
+@router.put("/privacy")
+def update_privacy(
+    body: PrivacyUpdateInput,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    st = get_or_create_user_settings(db, current_user.id)
+    st.anonymized_research_sharing = body.anonymized_research_sharing
+    db.commit()
+    return {"message": "Privacy & Data sharing preferences updated successfully"}
 
 @router.put("/appearance")
 def update_appearance(
@@ -132,18 +191,44 @@ def update_language(
     db.commit()
     return {"message": "Language & Regional settings updated successfully"}
 
+@router.get("/devices")
+def get_devices(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return get_connected_wearables(db, current_user.id)
+
+@router.post("/devices/connect")
+def connect_device(
+    body: ConnectDeviceInput,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return toggle_wearable_connection(db, current_user.id, body.provider, True, body.account_id)
+
+@router.post("/devices/disconnect")
+def disconnect_device(
+    body: DisconnectDeviceInput,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return toggle_wearable_connection(db, current_user.id, body.provider, False)
+
+@router.get("/export-data")
 @router.post("/export")
 def export_health_data(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    return export_user_health_data(db, current_user.id)
-
-@router.post("/logout-all")
-def logout_all_devices(
-    current_user: User = Depends(get_current_user)
-):
-    return {"message": "Successfully logged out from all active devices"}
+    data = export_user_health_data(db, current_user.id)
+    json_bytes = json.dumps(data, indent=2).encode('utf-8')
+    return Response(
+        content=json_bytes,
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f"attachment; filename=HealthAI_Export_User_{current_user.id}.json"
+        }
+    )
 
 @router.delete("/account")
 def delete_account(

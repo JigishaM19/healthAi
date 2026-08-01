@@ -196,6 +196,9 @@ class UserSettings(Base):
     reduce_animations = Column(Integer, default=0)
     high_contrast = Column(Integer, default=0)
     font_size = Column(String, default="medium")
+    two_factor_enabled = Column(Integer, default=0)
+    preferred_2fa_method = Column(String, default="email")
+    anonymized_research_sharing = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
@@ -241,6 +244,29 @@ class TrustedDevice(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    device = Column(String, nullable=True)
+    browser = Column(String, nullable=True)
+    os = Column(String, nullable=True)
+    ip = Column(String, nullable=True)
+    location = Column(String, nullable=True, default="Unknown Location")
+    token_id = Column(String, nullable=True)
+    is_current = Column(Integer, default=0)
+    last_active = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
+class ConnectedDevice(Base):
+    __tablename__ = "connected_devices"
 
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    provider = Column(String, nullable=False, index=True) # "google_fit", "apple_health", "fitbit", "samsung_health"
+    account_id = Column(String, nullable=True)
+    connected = Column(Integer, default=1) # 1 or 0
+    last_sync = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
