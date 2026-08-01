@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>HealthAI Clinical Analysis Report</title>
+  <style>
+    @page { size: A4; margin: 20mm; }
+    body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #1e293b; background-color: #ffffff; line-height: 1.5; margin: 0; padding: 0; }
+    .header { border-bottom: 3px solid #06b6d4; padding-bottom: 15px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+    .brand { font-size: 26px; font-weight: 800; color: #0891b2; letter-spacing: -0.5px; }
+    .report-title { font-size: 14px; font-weight: 700; color: #64748b; text-transform: uppercase; text-align: right; }
+    
+    .grid-2 { display: table; width: 100%; margin-bottom: 20px; }
+    .col { display: table-cell; width: 50%; vertical-align: top; }
+    
+    .card-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; font-size: 12px; margin-bottom: 15px; }
+    .card-box strong { color: #0f172a; }
+
+    .section-title { font-size: 14px; font-weight: 800; color: #0e7490; text-transform: uppercase; border-bottom: 1.5px solid #cffaffe0; padding-bottom: 4px; margin-top: 20px; margin-bottom: 10px; }
+    
+    table.med-table { width: 100%; border-collapse: collapse; margin-top: 10px; margin-bottom: 15px; font-size: 12px; }
+    table.med-table th { background-color: #0891b2; color: #ffffff; text-align: left; padding: 8px 12px; font-weight: 700; }
+    table.med-table td { border-bottom: 1px solid #e2e8f0; padding: 8px 12px; }
+    table.med-table tr:nth-child(even) { background-color: #f8fafc; }
+
+    .status-normal { background-color: #dcfce7; color: #15803d; font-weight: 700; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
+    .status-high { background-color: #ffe4e6; color: #be123c; font-weight: 700; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
+    .status-low { background-color: #fef3c7; color: #b45309; font-weight: 700; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
+
+    .warning-box { background-color: #fff1f2; border: 1px solid #fecdd3; border-left: 4px solid #e11d48; color: #9f1239; padding: 12px; border-radius: 8px; font-size: 12px; margin-top: 15px; }
+    .recommend-box { background-color: #f0fdf4; border: 1px solid #bbf7d0; border-left: 4px solid #16a34a; color: #14532d; padding: 12px; border-radius: 8px; font-size: 12px; margin-top: 15px; }
+
+    .disclaimer { font-size: 10px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 15px; margin-top: 30px; }
+    .watermark { text-align: center; font-size: 10px; font-weight: 700; color: #cbd5e1; text-transform: uppercase; letter-spacing: 2px; margin-top: 5px; }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="brand">HealthAI 🤖</div>
+    <div class="report-title">
+      AI Medical Analysis Report<br>
+      <span style="font-size: 11px; font-weight: normal; color: #94a3b8;">Report ID: #HA-{{ document_id }} | Date: {{ generated_date }}</span>
+    </div>
+  </div>
+
+  <!-- Document & Patient Info Grid -->
+  <div class="grid-2">
+    <div class="col" style="padding-right: 10px;">
+      <div class="card-box">
+        <strong>Patient Name:</strong> {{ user_name }}<br>
+        <strong>Age / Gender:</strong> {{ age }} yrs | {{ gender }}<br>
+        <strong>Conditions:</strong> {{ conditions_str }}<br>
+        <strong>Known Allergies:</strong> {{ allergies_str }}
+      </div>
+    </div>
+    <div class="col" style="padding-left: 10px;">
+      <div class="card-box">
+        <strong>File Name:</strong> {{ file_name }}<br>
+        <strong>Document Category:</strong> {{ document_type }}<br>
+        <strong>Upload Date:</strong> {{ upload_date }}<br>
+        <strong>OCR Engine Status:</strong> Multi-Format Text Extracted
+      </div>
+    </div>
+  </div>
+
+  <!-- Executive Summary -->
+  <div class="section-title">AI Executive Summary</div>
+  <p style="font-size: 12px; color: #334155; margin-top: 5px;">{{ ai_summary }}</p>
+
+  <!-- Extracted Lab Results Table -->
+  {% if lab_results %}
+  <div class="section-title">Extracted Laboratory Results</div>
+  <table class="med-table">
+    <thead>
+      <tr>
+        <th>Marker / Test Name</th>
+        <th>Measured Value</th>
+        <th>Unit</th>
+        <th>Reference Range</th>
+        <th>Clinical Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for lab in lab_results %}
+      <tr>
+        <td><strong>{{ lab.name }}</strong></td>
+        <td>{{ lab.value }}</td>
+        <td>{{ lab.unit }}</td>
+        <td>{{ lab.reference }}</td>
+        <td>
+          {% if lab.status == 'High' %}
+            <span class="status-high">HIGH</span>
+          {% elif lab.status == 'Low' %}
+            <span class="status-low">LOW</span>
+          {% else %}
+            <span class="status-normal">NORMAL</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <!-- Extracted Medications Schedule -->
+  {% if medicines %}
+  <div class="section-title">Extracted Prescription & Medication Schedule</div>
+  <table class="med-table">
+    <thead>
+      <tr>
+        <th>Medicine Name</th>
+        <th>Dosage</th>
+        <th>Frequency</th>
+        <th>Duration</th>
+        <th>Instructions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for med in medicines %}
+      <tr>
+        <td><strong>{{ med.name }}</strong></td>
+        <td>{{ med.dosage or 'Standard' }}</td>
+        <td>{{ med.frequency or 'Daily' }}</td>
+        <td>{{ med.duration or 'As prescribed' }}</td>
+        <td>{{ med.instructions or 'Follow physician instructions' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <!-- Historical Lab Trend Summary -->
+  {% if lab_trends %}
+  <div class="section-title">Historical Lab Trend Comparison</div>
+  <table class="med-table">
+    <thead>
+      <tr>
+        <th>Lab Parameter</th>
+        <th>Previous Value</th>
+        <th>Current Value</th>
+        <th>Change</th>
+        <th>Trend Direction</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t_name, t_info in lab_trends.items() %}
+      <tr>
+        <td><strong>{{ t_name }}</strong></td>
+        <td>{{ t_info.previous or 'Baseline' }} {{ t_info.unit }}</td>
+        <td>{{ t_info.latest }} {{ t_info.unit }}</td>
+        <td>{{ t_info.change }} ({{ t_info.percent_change }}%)</td>
+        <td>
+          {% if t_info.trend == 'Improving' %}
+            <span class="status-normal">IMPROVING</span>
+          {% elif t_info.trend == 'Worsening' %}
+            <span class="status-high">WORSENING</span>
+          {% else %}
+            <span class="status-low">STABLE</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <!-- Red Flag Warnings & Recommendations -->
+  {% if warnings %}
+  <div class="warning-box">
+    <strong>⚠️ Clinical Red Flag Warnings & Allergy Conflicts:</strong><br>
+    <ul style="margin: 5px 0 0 15px; padding: 0;">
+      {% for w in warnings %}
+      <li>{{ w }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if recommendations %}
+  <div class="recommend-box">
+    <strong>💡 Personalized Health Profile Recommendations:</strong><br>
+    <ul style="margin: 5px 0 0 15px; padding: 0;">
+      {% for r in recommendations %}
+      <li>{{ r }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <!-- Disclaimer & Watermark -->
+  <div class="disclaimer">
+    <strong>Medical Disclaimer:</strong> This AI Medical Analysis Report is generated automatically by HealthAI for informational and organizational tracking purposes. It does not constitute formal medical diagnosis, prescription, or treatment advice. Always consult your certified healthcare provider for clinical decisions.
+  </div>
+  <div class="watermark">Generated by HealthAI Intelligence Engine</div>
+
+</body>
+</html>

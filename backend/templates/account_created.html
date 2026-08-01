@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Welcome to HealthAI</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #0b1329; color: #f8fafc; margin: 0; padding: 20px; }
+    .card { max-width: 560px; margin: 0 auto; background: #131f3d; border: 1px solid #1e293b; border-radius: 20px; padding: 32px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+    .logo { font-size: 24px; font-weight: 800; color: #38bdf8; text-align: center; margin-bottom: 24px; }
+    .btn { display: inline-block; background: linear-gradient(135deg, #06b6d4, #14b8a6); color: #0f172a; font-weight: 800; text-decoration: none; padding: 14px 28px; border-radius: 12px; margin: 20px 0; text-align: center; }
+    .footer { text-align: center; font-size: 12px; color: #64748b; margin-top: 32px; border-t: 1px solid #1e293b; padding-top: 16px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">HealthAI 🤖</div>
+    <h2>Welcome to HealthAI, {{ user_name }}!</h2>
+    <p>Your production AI health assistant account has been created successfully.</p>
+    <p>What you can do with HealthAI:</p>
+    <ul>
+      <li>Upload and analyze any medical document (Lab Reports, Prescriptions, Imaging, Scans).</li>
+      <li>Chat with specialized AI clinical triage specialists.</li>
+      <li>Track lab trends and historical health memory over time.</li>
+      <li>Get automated medication and appointment reminders.</li>
+    </ul>
+    <div style="text-align: center;">
+      <a href="{{ app_url }}/dashboard" class="btn">Go to Dashboard</a>
+    </div>
+    <div class="footer">
+      © 2026 HealthAI Intelligence Platform. All rights reserved.
+    </div>
+  </div>
+</body>
+</html>
