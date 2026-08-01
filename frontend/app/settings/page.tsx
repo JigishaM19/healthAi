@@ -39,7 +39,12 @@ interface DeviceItem {
 
 export default function SettingsPage() {
   const router = useRouter();
-  const { language: currentLang, units: currentUnits, setLanguage: setGlobalLanguage, setUnits: setGlobalUnits, t } = useLanguage();
+  const { 
+    language: currentLang, units: currentUnits, 
+    setLanguage: setGlobalLanguage, setUnits: setGlobalUnits, 
+    setTheme: setGlobalTheme, setFontSize: setGlobalFontSize, setReduceAnim: setGlobalReduceAnim,
+    t 
+  } = useLanguage();
 
   const [activeTab, setActiveTab] = useState<"account" | "security" | "notifications" | "privacy" | "appearance" | "language" | "devices" | "danger">("account");
   const [loading, setLoading] = useState(true);
@@ -201,13 +206,16 @@ export default function SettingsPage() {
     const tVal = selectedTheme || theme;
     setSaving(true);
     try {
+      setGlobalTheme(tVal);
+      setGlobalFontSize(fontSize);
+      setGlobalReduceAnim(reduceAnim);
       await api.updateSettingsAppearance({
         theme: tVal,
         font_size: fontSize,
         reduce_animations: reduceAnim ? 1 : 0,
         high_contrast: highContrast ? 1 : 0
       });
-      setMessage({ text: "Appearance preferences updated!", type: "success" });
+      setMessage({ text: "Appearance preferences updated successfully!", type: "success" });
     } catch (err: any) {
       setMessage({ text: err.message || "Appearance save failed", type: "error" });
     } finally {

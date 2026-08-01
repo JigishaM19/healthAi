@@ -6,6 +6,7 @@ import { getToken } from "@/lib/auth";
 
 export type LanguageCode = "English" | "Hindi" | "Spanish" | "French" | "German";
 export type UnitSystem = "Metric" | "Imperial";
+export type ThemeMode = "dark" | "light" | "system";
 
 export const translations: Record<LanguageCode, Record<string, string>> = {
   English: {
@@ -105,7 +106,7 @@ export const translations: Record<LanguageCode, Record<string, string>> = {
     welcomeBack: "Bienvenido de nuevo a HealthAI",
     healthSummary: "Resumen de Salud Personalizado",
     activeMedications: "Medicamentos Activos",
-    allergies: "Alergias y Sensibilidades",
+    allergies: "Alergias y Sensabilidades",
     conditions: "Condiciones Médicas",
     recentReports: "Informes Médicos Recientes",
     labTrends: "Tendencias de Laboratorio",
@@ -198,8 +199,14 @@ export const translations: Record<LanguageCode, Record<string, string>> = {
 interface LanguageContextType {
   language: LanguageCode;
   units: UnitSystem;
+  theme: ThemeMode;
+  fontSize: string;
+  reduceAnim: boolean;
   setLanguage: (lang: LanguageCode) => void;
   setUnits: (u: UnitSystem) => void;
+  setTheme: (t: ThemeMode) => void;
+  setFontSize: (size: string) => void;
+  setReduceAnim: (reduce: boolean) => void;
   t: (key: string) => string;
   convertWeight: (kg?: number | null) => string;
   convertHeight: (cm?: number | null) => string;
@@ -210,8 +217,14 @@ interface LanguageContextType {
 const LanguageContext = createContext<LanguageContextType>({
   language: "English",
   units: "Metric",
+  theme: "dark",
+  fontSize: "medium",
+  reduceAnim: false,
   setLanguage: () => {},
   setUnits: () => {},
+  setTheme: () => {},
+  setFontSize: () => {},
+  setReduceAnim: () => {},
   t: (key) => key,
   convertWeight: () => "",
   convertHeight: () => "",
@@ -222,18 +235,63 @@ const LanguageContext = createContext<LanguageContextType>({
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const [language, setLanguageState] = useState<LanguageCode>("English");
   const [units, setUnitsState] = useState<UnitSystem>("Metric");
+  const [theme, setThemeState] = useState<ThemeMode>("dark");
+  const [fontSize, setFontSizeState] = useState<string>("medium");
+  const [reduceAnim, setReduceAnimState] = useState<boolean>(false);
+
+  const applyThemeToDOM = (tMode: ThemeMode) => {
+    if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    root.classList.remove("dark", "light");
+    if (tMode === "system") {
+      const isSystemDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      root.classList.add(isSystemDark ? "dark" : "light");
+    } else {
+      root.classList.add(tMode);
+    }
+  };
+
+  const applyFontSizeToDOM = (size: string) => {
+    if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    root.classList.remove("font-small", "font-medium", "font-large");
+    root.classList.add(`font-${size}`);
+  };
+
+  const applyReduceAnimToDOM = (reduce: boolean) => {
+    if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    root.classList.toggle("reduce-motion", reduce);
+  };
 
   useEffect(() => {
+    // 1. Initial Load from LocalStorage
     const savedLang = localStorage.getItem("healthai_lang") as LanguageCode;
     const savedUnits = localStorage.getItem("healthai_units") as UnitSystem;
+    const savedTheme = localStorage.getItem("healthai_theme") as ThemeMode;
+    const savedFontSize = localStorage.getItem("healthai_fontsize");
+    const savedReduceAnim = localStorage.getItem("healthai_reduce_anim");
 
-    if (savedLang && translations[savedLang]) {
-      setLanguageState(savedLang);
-    }
-    if (savedUnits) {
-      setUnitsState(savedUnits);
+    if (savedLang && translations[savedLang]) setLanguageState(savedLang);
+    if (savedUnits) setUnitsState(savedUnits);
+    if (savedTheme) {
+      setThemeState(savedTheme);
+      applyThemeToDOM(savedTheme);
+    } else {
+      applyThemeToDOM("dark");
     }
 
+    if (savedFontSize) {
+      setFontSizeState(savedFontSize);
+      applyFontSizeToDOM(savedFontSize);
+    }
+    if (savedReduceAnim !== null) {
+      const isRed = savedReduceAnim === "true";
+      setReduceAnimState(isRed);
+      applyReduceAnimToDOM(isRed);
+    }
+
+    // 2. Fetch from Backend if authenticated
     const token = getToken();
     if (token) {
       api.getSettings()
@@ -246,6 +304,23 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
             if (res.settings.units) {
               setUnitsState(res.settings.units as UnitSystem);
               localStorage.setItem("healthai_units", res.settings.units);
+            }
+            if (res.settings.theme) {
+              const th = res.settings.theme as ThemeMode;
+              setThemeState(th);
+              applyThemeToDOM(th);
+              localStorage.setItem("healthai_theme", th);
+            }
+            if (res.settings.font_size) {
+              setFontSizeState(res.settings.font_size);
+              applyFontSizeToDOM(res.settings.font_size);
+              localStorage.setItem("healthai_fontsize", res.settings.font_size);
+            }
+            if (res.settings.reduce_animations !== undefined) {
+              const red = Boolean(res.settings.reduce_animations);
+              setReduceAnimState(red);
+              applyReduceAnimToDOM(red);
+              localStorage.setItem("healthai_reduce_anim", red ? "true" : "false");
             }
           }
         })
@@ -261,6 +336,24 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const setUnits = (u: UnitSystem) => {
     setUnitsState(u);
     localStorage.setItem("healthai_units", u);
+  };
+
+  const setTheme = (tMode: ThemeMode) => {
+    setThemeState(tMode);
+    applyThemeToDOM(tMode);
+    localStorage.setItem("healthai_theme", tMode);
+  };
+
+  const setFontSize = (size: string) => {
+    setFontSizeState(size);
+    applyFontSizeToDOM(size);
+    localStorage.setItem("healthai_fontsize", size);
+  };
+
+  const setReduceAnim = (reduce: boolean) => {
+    setReduceAnimState(reduce);
+    applyReduceAnimToDOM(reduce);
+    localStorage.setItem("healthai_reduce_anim", reduce ? "true" : "false");
   };
 
   const t = (key: string): string => {
@@ -307,7 +400,11 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <LanguageContext.Provider value={{ language, units, setLanguage, setUnits, t, convertWeight, convertHeight, convertTemp, convertVolume }}>
+    <LanguageContext.Provider value={{
+      language, units, theme, fontSize, reduceAnim,
+      setLanguage, setUnits, setTheme, setFontSize, setReduceAnim,
+      t, convertWeight, convertHeight, convertTemp, convertVolume
+    }}>
       {children}
     </LanguageContext.Provider>
   );

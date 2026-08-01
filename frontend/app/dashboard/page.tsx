@@ -24,9 +24,11 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { getToken, getUser } from "@/lib/auth";
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { t } = useLanguage();
   const [user, setUserState] = useState<any>(null);
   const [summary, setSummary] = useState<any>(null);
   const [history, setHistory] = useState<any[]>([]);
@@ -77,10 +79,10 @@ export default function DashboardPage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 glass-panel p-6 sm:p-8 rounded-3xl border border-slate-800">
           <div>
             <span className="text-xs font-bold text-cyan-400 uppercase tracking-widest block mb-1">
-              Personal Health Hub
+              {t("healthSummary")}
             </span>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-white">
-              Welcome back, <span className="text-gradient">{user?.name || "Friend"}</span> 👋
+              {t("welcomeBack")}, <span className="text-gradient">{user?.name || "Friend"}</span> 👋
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 mt-1">
               Here is your daily medical intelligence summary & wellness status.
@@ -92,7 +94,7 @@ export default function DashboardPage() {
             className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-gradient-to-r from-cyan-500 via-teal-400 to-indigo-500 text-slate-950 font-extrabold text-sm shadow-xl shadow-cyan-500/20 hover:scale-[1.02] transition-all shrink-0"
           >
             <Plus className="w-5 h-5" />
-            New Consultation
+            {t("consultation")}
           </Link>
         </div>
 
@@ -130,82 +132,91 @@ export default function DashboardPage() {
           </Link>
         </div>
 
-        {/* Dashboard Grid Cards */}
+        {/* Health Overview Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           
-          {/* Card 1: Recent Consultations */}
+          {/* Active Medications */}
           <div className="glass-panel p-6 rounded-3xl border border-slate-800 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="font-bold text-white text-sm flex items-center gap-2">
-                <History className="w-4 h-4 text-cyan-400" />
-                Recent Consultations
-              </h3>
-              <Link href="/history" className="text-xs text-cyan-400 hover:underline">
-                View All
-              </Link>
-            </div>
-
-            {history.length > 0 ? (
-              <div className="space-y-2">
-                {history.slice(0, 3).map((conv) => (
-                  <Link
-                    key={conv.id}
-                    href={`/chat?id=${conv.id}`}
-                    className="block p-3 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-cyan-500/40 transition-all text-xs"
-                  >
-                    <p className="font-semibold text-slate-200 truncate">{conv.title}</p>
-                    <span className="text-[10px] text-slate-500">
-                      {new Date(conv.created_at).toLocaleDateString()}
-                    </span>
-                  </Link>
-                ))}
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-400">
+                  <Pill className="w-5 h-5" />
+                </div>
+                <h3 className="font-bold text-white text-sm">{t("activeMedications")}</h3>
               </div>
-            ) : (
-              <p className="text-xs text-slate-500 italic">
-                No past consultations yet. Start your first session!
-              </p>
-            )}
-          </div>
-
-          {/* Card 2: Medication Reminders */}
-          <div className="glass-panel p-6 rounded-3xl border border-slate-800 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-white text-sm flex items-center gap-2">
-                <Pill className="w-4 h-4 text-teal-400" />
-                Medication Tracker
-              </h3>
-              <span className="text-xs text-teal-400 font-semibold">Active</span>
+              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-indigo-500/20 text-indigo-300">
+                {summary?.medications?.length || 0}
+              </span>
             </div>
 
             <div className="space-y-2">
-              <div className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800 flex items-center justify-between text-xs">
-                <div>
-                  <p className="font-bold text-slate-200">Daily Supplement / Rx</p>
-                  <span className="text-[10px] text-slate-400">As specified in profile</span>
-                </div>
-                <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 font-bold text-[10px]">
-                  Scheduled
-                </span>
-              </div>
+              {summary?.medications?.length > 0 ? (
+                summary.medications.map((med: string, i: number) => (
+                  <div key={i} className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800/80 text-xs text-slate-200 flex items-center justify-between font-medium">
+                    <span>{med}</span>
+                    <span className="text-[10px] text-indigo-400 font-bold">Active</span>
+                  </div>
+                ))
+              ) : (
+                <p className="text-xs text-slate-400 italic">No active medications registered.</p>
+              )}
             </div>
           </div>
 
-          {/* Card 3: Hydration Tracker */}
+          {/* Known Conditions */}
           <div className="glass-panel p-6 rounded-3xl border border-slate-800 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="font-bold text-white text-sm flex items-center gap-2">
-                <Droplet className="w-4 h-4 text-cyan-400" />
-                Hydration Tracker
-              </h3>
-              <span className="text-xs text-cyan-400 font-semibold">{summary?.hydration_goal}</span>
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+                  <Activity className="w-5 h-5" />
+                </div>
+                <h3 className="font-bold text-white text-sm">{t("conditions")}</h3>
+              </div>
+              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-cyan-500/20 text-cyan-300">
+                {summary?.conditions?.length || 0}
+              </span>
             </div>
 
-            <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden">
-              <div className="h-full bg-cyan-400 rounded-full w-[70%]" />
+            <div className="space-y-2">
+              {summary?.conditions?.length > 0 ? (
+                summary.conditions.map((cond: string, i: number) => (
+                  <div key={i} className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800/80 text-xs text-slate-200 flex items-center justify-between font-medium">
+                    <span>{cond}</span>
+                    <span className="text-[10px] text-cyan-400 font-bold">Monitored</span>
+                  </div>
+                ))
+              ) : (
+                <p className="text-xs text-slate-400 italic">No chronic medical conditions listed.</p>
+              )}
             </div>
-            <p className="text-xs text-slate-400">
-              70% achieved today. Sip water regularly for cognitive focus.
-            </p>
+          </div>
+
+          {/* Allergies & Sensitivities */}
+          <div className="glass-panel p-6 rounded-3xl border border-slate-800 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-400">
+                  <Bookmark className="w-5 h-5" />
+                </div>
+                <h3 className="font-bold text-white text-sm">{t("allergies")}</h3>
+              </div>
+              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-rose-500/20 text-rose-300">
+                {summary?.allergies?.length || 0}
+              </span>
+            </div>
+
+            <div className="space-y-2">
+              {summary?.allergies?.length > 0 ? (
+                summary.allergies.map((all: string, i: number) => (
+                  <div key={i} className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800/80 text-xs text-slate-200 flex items-center justify-between font-medium">
+                    <span>{all}</span>
+                    <span className="text-[10px] text-rose-400 font-bold">Avoid</span>
+                  </div>
+                ))
+              ) : (
+                <p className="text-xs text-slate-400 italic">No known drug/food allergies registered.</p>
+              )}
+            </div>
           </div>
 
         </div>
@@ -216,19 +227,19 @@ export default function DashboardPage() {
       <nav className="fixed bottom-0 left-0 right-0 glass-panel border-t border-slate-800 py-3 px-6 flex items-center justify-around z-40 lg:hidden text-xs">
         <Link href="/dashboard" className="flex flex-col items-center text-cyan-400 font-bold">
           <Home className="w-5 h-5" />
-          <span>Home</span>
+          <span>{t("dashboard")}</span>
         </Link>
         <Link href="/chat" className="flex flex-col items-center text-slate-400 hover:text-cyan-400">
           <MessageSquare className="w-5 h-5" />
-          <span>Chat</span>
+          <span>{t("chat")}</span>
         </Link>
-        <Link href="/history" className="flex flex-col items-center text-slate-400 hover:text-cyan-400">
-          <History className="w-5 h-5" />
-          <span>History</span>
+        <Link href="/timeline" className="flex flex-col items-center text-slate-400 hover:text-cyan-400">
+          <FileText className="w-5 h-5" />
+          <span>{t("timeline")}</span>
         </Link>
-        <Link href="/health-profile" className="flex flex-col items-center text-slate-400 hover:text-cyan-400">
+        <Link href="/settings" className="flex flex-col items-center text-slate-400 hover:text-cyan-400">
           <UserCheck className="w-5 h-5" />
-          <span>Health</span>
+          <span>{t("settings")}</span>
         </Link>
       </nav>
     </div>
