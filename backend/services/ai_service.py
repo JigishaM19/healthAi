@@ -42,7 +42,6 @@ def generate_dietitian_guidance(
     weight = profile_data.get("weight_kg", 70.0) if profile_data else 70.0
     conditions = profile_data.get("conditions", []) if profile_data else []
     allergies = profile_data.get("allergies", []) if profile_data else []
-    goals = profile_data.get("goals", []) if profile_data else []
 
     t = n_plan.get("targets", {})
     t_cal = t.get("target_calories", n_plan.get("daily_calories", 1600))
@@ -168,7 +167,7 @@ Based on your personal medical profile (**Age**: {age}, **Gender**: {gender}, **
         "warning_signs": [
             "Dizziness, lethargy, or extreme hunger from sudden caloric drops",
             "Severe joint or muscle discomfort during workouts",
-            "Unexplained rapid weight gain or loss (seek immediate physician review)"
+            "Hypoglycemia symptoms (shakiness, sweating) if taking diabetic medications"
         ],
         "personalized_advice": f"Plan customized for user (Age: {age}, Weight: {weight}kg, Goal: {n_plan.get('goal')}). {c_note_str}",
         "confidence": 0.95,
@@ -190,6 +189,22 @@ async def generate_health_guidance(
     """
     Generate context-aware AI health guidance incorporating the user's profile and historical health memory.
     """
+    # 0. Check Nutrition Intent First
+    if is_nutrition_intent(user_message):
+        try:
+            # Generate fallback dietitian plan if called directly
+            from database import SessionLocal
+            from services.nutrition_service import generate_personalized_diet_plan
+            db = SessionLocal()
+            try:
+                user_id = profile_data.get("user_id", 1) if profile_data else 1
+                n_plan = generate_personalized_diet_plan(db, user_id, user_message)
+                return generate_dietitian_guidance(user_message, profile_data, n_plan)
+            finally:
+                db.close()
+        except Exception as e:
+            print("[AIService] Direct dietitian guidance fallback note:", e)
+
     # 1. Run Colab Agent Remote Endpoint if configured
     if profile_data:
         remote_res = await query_colab_endpoint(user_message, profile_data, conversation_history)
