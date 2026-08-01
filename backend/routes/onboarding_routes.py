@@ -129,7 +129,7 @@ def get_health_profile(current_user: User = Depends(get_current_user), db: Sessi
     print(f"[HealthProfile] Request received for user_id={current_user.id}")
     profile = db.query(HealthProfile).filter(HealthProfile.user_id == current_user.id).first()
     if not profile:
-        print(f"[HealthProfile] No profile found for user_id={current_user.id}, returning default profile structure")
+        print(f"[HealthProfile] No profile found for user_id={current_user.id}, creating default record in DB")
         profile = HealthProfile(
             user_id=current_user.id,
             age=30,
@@ -140,9 +140,14 @@ def get_health_profile(current_user: User = Depends(get_current_user), db: Sessi
             allergies=[],
             medications=[],
             goals=[],
+            family_history=[],
+            notification_preferences={},
             blood_group="O+",
             emergency_contact=""
         )
+        db.add(profile)
+        db.commit()
+        db.refresh(profile)
     else:
         print(f"[HealthProfile] Profile successfully retrieved for user_id={current_user.id}")
     return profile
