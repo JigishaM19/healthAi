@@ -47,11 +47,17 @@ async function request(endpoint: string, options: RequestInit = {}) {
   return res.json();
 }
 
-async function uploadDocument(file: File, documentType: string = "general_medical") {
+async function uploadDocument(file: File | FormData, documentType: string = "general_medical") {
   const token = getToken();
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("document_type", documentType);
+  let bodyData: FormData;
+
+  if (file instanceof FormData) {
+    bodyData = file;
+  } else {
+    bodyData = new FormData();
+    bodyData.append("file", file);
+    bodyData.append("document_type", documentType);
+  }
 
   const headers: Record<string, string> = {};
   if (token) {
@@ -61,7 +67,7 @@ async function uploadDocument(file: File, documentType: string = "general_medica
   const res = await fetch(`${API_BASE_URL}/documents/upload`, {
     method: "POST",
     headers,
-    body: formData,
+    body: bodyData,
   });
 
   if (res.status === 401) {
@@ -103,11 +109,17 @@ export const api = {
   sendMessage: (message: string, conversation_id?: number) =>
     request("/chat", { method: "POST", body: JSON.stringify({ message, conversation_id }) }),
   listHistory: () => request("/history", { method: "GET" }),
+  getChatHistory: () => request("/history", { method: "GET" }),
+  deleteConversation: (id: number) => request(`/history/${id}`, { method: "DELETE" }),
 
   // Timeline
   getTimeline: (params?: { event_type?: string; start_date?: string; end_date?: string }) => {
     const query = new URLSearchParams(params as any).toString();
     return request(`/timeline${query ? `?${query}` : ""}`, { method: "GET" });
+  },
+  getTimelineEvents: (event_type?: string) => {
+    const query = event_type && event_type !== "all" ? `?event_type=${encodeURIComponent(event_type)}` : "";
+    return request(`/timeline${query}`, { method: "GET" });
   },
   createTimelineEvent: (data: any) => request("/timeline/event", { method: "POST", body: JSON.stringify(data) }),
   getTimelineStats: () => request("/timeline/stats", { method: "GET" }),
@@ -119,6 +131,7 @@ export const api = {
     return request(`/documents${query ? `?${query}` : ""}`, { method: "GET" });
   },
   getDocumentDetails: (id: number) => request(`/documents/${id}`, { method: "GET" }),
+  getDocument: (id: number) => request(`/documents/${id}`, { method: "GET" }),
   deleteDocument: (id: number) => request(`/documents/${id}`, { method: "DELETE" }),
 
   // Health Memory & Lab Trends Engine
