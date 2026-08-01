@@ -5,7 +5,7 @@ from database import get_db
 from models import User, HealthProfile, Conversation, Message
 from schemas import ChatMessageInput, ChatResponse, ConversationResponse
 from auth import get_current_user
-from services.ai_service import is_nutrition_intent, generate_dietitian_guidance, generate_health_guidance
+from services.ai_service import is_medication_intent, generate_medication_guidance, is_nutrition_intent, generate_dietitian_guidance, generate_health_guidance
 from services.health_memory_service import build_memory_prompt_context, create_memory_entry
 
 router = APIRouter(tags=["AI Health Consultation Chat"])
@@ -21,6 +21,7 @@ async def chat_consultation(
     profile_dict = {}
     if profile:
         profile_dict = {
+            "user_id": current_user.id,
             "age": profile.age,
             "gender": profile.gender,
             "height_cm": profile.height_cm,
@@ -43,7 +44,6 @@ async def chat_consultation(
         if not conversation:
             raise HTTPException(status_code=404, detail="Conversation not found")
     else:
-        # Title snippet from first 35 chars
         title_text = input_data.message[:35] + ("..." if len(input_data.message) > 35 else "")
         conversation = Conversation(user_id=current_user.id, title=title_text)
         db.add(conversation)
@@ -68,8 +68,25 @@ async def chat_consultation(
     # 4. Build Health Memory Prompt Context
     memory_context = build_memory_prompt_context(db, current_user.id, input_data.message)
 
-    # 5. Detect Nutrition Intent & Generate AI Dietitian Guidance
-    if is_nutrition_intent(input_data.message):
+    # 5. Detect Medication or Nutrition Intent & Generate Specialized Guidance
+    if is_medication_intent(input_data.message):
+        try:
+            from services.medication_safety_service import run_medication_safety_audit
+            m_report = run_medication_safety_audit(db, current_user.id)
+            ai_result = generate_medication_guidance(
+                user_message=input_data.message,
+                profile_data=profile_dict,
+                m_report=m_report
+            )
+        except Exception as me:
+            print("[ChatRoutes] Medication safety guidance fallback error:", me)
+            ai_result = await generate_health_guidance(
+                user_message=input_data.message,
+                profile_data=profile_dict,
+                conversation_history=history_msgs,
+                memory_context=memory_context
+            )
+    elif is_nutrition_intent(input_data.message):
         try:
             from services.nutrition_service import generate_personalized_diet_plan
             n_plan = generate_personalized_diet_plan(db, current_user.id, input_data.message)

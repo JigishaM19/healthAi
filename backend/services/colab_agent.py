@@ -20,6 +20,14 @@ NUTRITION_KEYWORDS = [
     "suggest food", "food according to report", "fitness", "healthy eating",
     "what should i eat daily", "food", "meals", "meal", "eating", "eat"
 ]
+MEDICATION_KEYWORDS = [
+    "take together", "can i take", "interaction", "medicine", "medication",
+    "drug", "pill", "prescription", "side effect", "timing", "schedule",
+    "metformin", "levothyroxine", "amlodipine", "aspirin", "warfarin",
+    "ibuprofen", "naproxen", "paracetamol", "statin", "atorvastatin",
+    "drink milk with", "grapefruit", "spinach with", "empty stomach",
+    "with food", "dangerous together", "safe to take", "take my medicines"
+]
 
 def route_triage(query: str, age: Optional[int] = None) -> Dict[str, str]:
     query_lower = (query or "").lower()
@@ -35,6 +43,12 @@ def route_triage(query: str, age: Optional[int] = None) -> Dict[str, str]:
             "ward": "emergency",
             "reasoning": "Emergency keyword detected — routed immediately to Emergency Ward for urgent care.",
             "assigned_doctor": "Dr. Marcus Vance (ER Trauma Specialist)"
+        }
+    elif any(kw in query_lower for kw in MEDICATION_KEYWORDS):
+        return {
+            "ward": "pharmacology",
+            "reasoning": "Medication interaction, safety, or timing query detected — routed to Clinical Pharmacology.",
+            "assigned_doctor": "Clinical Pharmacologist & Medication Safety Specialist"
         }
     elif any(kw in query_lower for kw in NUTRITION_KEYWORDS):
         return {

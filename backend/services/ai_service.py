@@ -22,10 +22,24 @@ NUTRITION_KEYWORDS = [
     "what should i eat daily", "food", "meals", "meal", "eating", "eat"
 ]
 
+MEDICATION_KEYWORDS = [
+    "take together", "can i take", "interaction", "medicine", "medication",
+    "drug", "pill", "prescription", "side effect", "timing", "schedule",
+    "metformin", "levothyroxine", "amlodipine", "aspirin", "warfarin",
+    "ibuprofen", "naproxen", "paracetamol", "statin", "atorvastatin",
+    "drink milk with", "grapefruit", "spinach with", "empty stomach",
+    "with food", "dangerous together", "safe to take", "take my medicines"
+]
+
 def is_nutrition_intent(message: str) -> bool:
     """Detects whether a user message expresses nutrition, diet, food, or lifestyle intent."""
     msg = (message or "").lower()
     return any(k in msg for k in NUTRITION_KEYWORDS)
+
+def is_medication_intent(message: str) -> bool:
+    """Detects whether a user message expresses medication, drug safety, interaction, or timing intent."""
+    msg = (message or "").lower()
+    return any(k in msg for k in MEDICATION_KEYWORDS)
 
 def generate_dietitian_guidance(
     user_message: str,
@@ -180,6 +194,119 @@ Based on your personal medical profile (**Age**: {age}, **Gender**: {gender}, **
         "analysis": analysis_card
     }
 
+def generate_medication_guidance(
+    user_message: str,
+    profile_data: Optional[Dict[str, Any]],
+    m_report: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Constructs a comprehensive, personalized AI Medication Safety response with
+    drug-drug, food-medication, condition, and lab interaction warnings + daily timing schedule.
+    """
+    meds = m_report.get("medications_analyzed", [])
+    severity = m_report.get("overall_severity", "Safe")
+    dd = m_report.get("drug_drug_interactions", [])
+    fd = m_report.get("food_interactions", [])
+    cd = m_report.get("condition_interactions", [])
+    ld = m_report.get("lab_interactions", [])
+    sched = m_report.get("medication_schedule", [])
+
+    dd_lines = []
+    for item in dd:
+        dd_lines.append(
+            f"  - ⚠️ **[{item['severity']} Risk] {', '.join(item['medications'])}**: {item['description']}\n"
+            f"    - *Action*: {item['what_to_do']}\n"
+            f"    - *Monitor*: {', '.join(item['monitoring'])}"
+        )
+
+    fd_lines = []
+    for item in fd:
+        fd_lines.append(
+            f"  - 🥛 **[{item['severity']} Risk] {item['medication']} + {item['conflicting_food']}**: {item['description']}\n"
+            f"    - *Timing Advice*: {item['timing_advice']}\n"
+            f"    - *Foods to Avoid*: {', '.join(item['foods_to_avoid'][:4])}"
+        )
+
+    cd_lines = []
+    for item in cd:
+        cd_lines.append(
+            f"  - 🩺 **[{item['severity']} Risk] {item['medication']} & {item['condition']}**: {item['description']}\n"
+            f"    - *Action*: {item['what_to_do']}"
+        )
+
+    ld_lines = []
+    for item in ld:
+        ld_lines.append(
+            f"  - 🔬 **[{item['severity']} Risk] {item['medication']} & Lab {item['lab_test']} ({item['lab_value']})**: {item['description']}\n"
+            f"    - *Suggested Action*: {item['suggested_monitoring']}"
+        )
+
+    sched_lines = []
+    for entry in sched:
+        sched_lines.append(
+            f"  - ⏰ **{entry['time']}**: **{entry['medication']}** ({entry['meal_relation']})\n"
+            f"    - *Guideline*: {entry['spacing_rule']}"
+        )
+
+    reply_markdown = f"""## 💊 HealthAI Medication Safety Intelligence Report
+
+Based on your active medications ({', '.join(meds) if meds else 'None reported'}) and your medical profile:
+
+### 🛡️ Overall Safety Risk Severity: **{severity.upper()}**
+
+---
+
+### 🚨 Drug-Drug Interactions
+{chr(10).join(dd_lines) if dd_lines else "✅ *No direct drug-drug interactions detected among your current medications.*"}
+
+---
+
+### 🥦 Food & Dietary Medication Conflicts
+{chr(10).join(fd_lines) if fd_lines else "✅ *No critical food-medication conflicts detected.*"}
+
+---
+
+### 🩺 Health Condition & Lab Considerations
+{chr(10).join(cd_lines + ld_lines) if (cd_lines or ld_lines) else "✅ *No condition or lab contraindications detected.*"}
+
+---
+
+### ⏰ Optimized Daily Medication Schedule
+{chr(10).join(sched_lines) if sched_lines else "✅ *No active medications requiring specific spacing.*"}
+
+---
+
+> ⚠️ **Medical Safety Disclaimer**:
+> {m_report.get('safety_disclaimer')}
+> *Do not discontinue or change any medication without consulting your healthcare professional.*"""
+
+    analysis_card = {
+        "possible_causes": [
+            f"Pharmacological risk evaluation for {len(meds)} active medications",
+            f"Cytochrome P450 and gastrointestinal binding interaction audit",
+            f"Condition-medication compatibility ({severity} overall risk)"
+        ],
+        "recommended_actions": [
+            "Review the optimized daily medication schedule and spacing guidelines",
+            "Avoid high-risk food combinations highlighted in your safety report",
+            "Consult your pharmacist or physician before adding new over-the-counter drugs"
+        ],
+        "warning_signs": [
+            "Unexplained bruising, bleeding gums, or dark stools",
+            "Sudden muscle weakness, dizziness, or irregular heartbeat",
+            "Signs of allergic reaction (rash, facial swelling, trouble breathing)"
+        ],
+        "personalized_advice": f"Medication safety audit completed. Overall Severity: {severity}. Always discuss prescription changes with your doctor.",
+        "confidence": 0.96,
+        "ward": "pharmacology",
+        "assigned_doctor": "Clinical Pharmacologist & Medication Safety Specialist"
+    }
+
+    return {
+        "reply": reply_markdown,
+        "analysis": analysis_card
+    }
+
 async def generate_health_guidance(
     user_message: str,
     profile_data: Optional[Dict[str, Any]],
@@ -189,10 +316,24 @@ async def generate_health_guidance(
     """
     Generate context-aware AI health guidance incorporating the user's profile and historical health memory.
     """
-    # 0. Check Nutrition Intent First
+    # 0a. Check Medication Intent First
+    if is_medication_intent(user_message):
+        try:
+            from database import SessionLocal
+            from services.medication_safety_service import run_medication_safety_audit
+            db = SessionLocal()
+            try:
+                user_id = profile_data.get("user_id", 1) if profile_data else 1
+                m_report = run_medication_safety_audit(db, user_id)
+                return generate_medication_guidance(user_message, profile_data, m_report)
+            finally:
+                db.close()
+        except Exception as me:
+            print("[AIService] Medication safety guidance fallback note:", me)
+
+    # 0b. Check Nutrition Intent Second
     if is_nutrition_intent(user_message):
         try:
-            # Generate fallback dietitian plan if called directly
             from database import SessionLocal
             from services.nutrition_service import generate_personalized_diet_plan
             db = SessionLocal()

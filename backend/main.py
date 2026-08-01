@@ -2,7 +2,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import engine, Base
-from routes import auth_routes, onboarding_routes, chat_routes, user_routes, timeline_routes, report_routes, memory_routes, settings_routes, verification_routes, nutrition_routes
+from routes import auth_routes, onboarding_routes, chat_routes, user_routes, timeline_routes, report_routes, memory_routes, settings_routes, verification_routes, nutrition_routes, medication_routes
 
 # Automatically create SQLite/PostgreSQL database tables on server start
 Base.metadata.create_all(bind=engine)
@@ -39,6 +39,7 @@ app.include_router(memory_routes.router)
 app.include_router(settings_routes.router)
 app.include_router(verification_routes.router)
 app.include_router(nutrition_routes.router)
+app.include_router(medication_routes.router)
 
 @app.get("/")
 def root():
