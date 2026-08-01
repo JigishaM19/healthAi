@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
@@ -22,7 +22,7 @@ import {
 import { api } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 
-export default function ChatPage() {
+function ChatContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const activeIdParam = searchParams.get("id");
@@ -362,5 +362,13 @@ export default function ChatPage() {
         </Link>
       </nav>
     </div>
+  );
+}
+
+export default function ChatPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#0b1329] flex items-center justify-center"><Loader label="Loading AI Chat..." /></div>}>
+      <ChatContent />
+    </Suspense>
   );
 }

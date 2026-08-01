@@ -6,9 +6,9 @@ import { LucideIcon } from "lucide-react";
 
 interface FeatureCardProps {
   icon: LucideIcon;
-  title: str;
-  description: str;
-  accentColor?: str;
+  title: string;
+  description: string;
+  accentColor?: string;
   delay?: number;
 }
 
