@@ -5,7 +5,8 @@ from database import get_db
 from models import User, HealthProfile, Conversation, Message
 from schemas import ChatMessageInput, ChatResponse, ConversationResponse
 from auth import get_current_user
-from services.ai_service import generate_health_guidance
+from services.ai_service import is_nutrition_intent, generate_dietitian_guidance, generate_health_guidance
+from services.health_memory_service import build_memory_prompt_context, create_memory_entry
 
 router = APIRouter(tags=["AI Health Consultation Chat"])
 
@@ -42,7 +43,7 @@ async def chat_consultation(
         if not conversation:
             raise HTTPException(status_code=404, detail="Conversation not found")
     else:
-        # Title snippet from first 30 chars
+        # Title snippet from first 35 chars
         title_text = input_data.message[:35] + ("..." if len(input_data.message) > 35 else "")
         conversation = Conversation(user_id=current_user.id, title=title_text)
         db.add(conversation)
@@ -64,45 +65,34 @@ async def chat_consultation(
     db.add(user_msg_db)
     db.commit()
 
-    # 4. Build Health Memory & Nutrition Prompt Context
-    from services.health_memory_service import build_memory_prompt_context, create_memory_entry
+    # 4. Build Health Memory Prompt Context
     memory_context = build_memory_prompt_context(db, current_user.id, input_data.message)
 
-    # Detect Nutrition Intent
-    nut_keywords = [
-        "lose weight", "weight loss", "gain weight", "diet", "meal plan", "calories",
-        "protein", "carbohydrates", "fat loss", "obesity", "diabetes diet", "hypertension diet",
-        "thyroid diet", "pcos diet", "kidney diet", "liver diet", "cholesterol diet",
-        "vegetarian", "vegan", "jain diet", "fasting", "healthy eating", "what to eat", "grocery"
-    ]
-    msg_lower = input_data.message.lower()
-    if any(k in msg_lower for k in nut_keywords):
+    # 5. Detect Nutrition Intent & Generate AI Dietitian Guidance
+    if is_nutrition_intent(input_data.message):
         try:
             from services.nutrition_service import generate_personalized_diet_plan
             n_plan = generate_personalized_diet_plan(db, current_user.id, input_data.message)
-            t = n_plan.get("targets", {})
-            r = n_plan.get("diet_rules", {})
-            nut_summary = (
-                f"\n\n[PERSONALIZED AI NUTRITION SYSTEM DATA]:\n"
-                f"- Daily Calorie Target: {t.get('target_calories')} kcal/day (BMR: {n_plan['metrics']['bmr']}, TDEE: {n_plan['metrics']['tdee']})\n"
-                f"- Macro Breakdown: Protein: {t.get('protein_g')}g, Carbs: {t.get('carbs_g')}g, Fat: {t.get('fat_g')}g, Fiber: {t.get('fiber_g')}g\n"
-                f"- Hydration Target: {n_plan.get('hydration', {}).get('daily_target_liters', 3.0)} Liters/day\n"
-                f"- Foods to Eat: {', '.join(r.get('foods_to_eat', [])[:8])}\n"
-                f"- Foods to Avoid: {', '.join(r.get('foods_to_avoid', [])[:8])}\n"
-                f"- Sample Day 1 Plan: Breakfast ({n_plan['meal_plan_7day'][0]['breakfast']}), Lunch ({n_plan['meal_plan_7day'][0]['lunch']}), Dinner ({n_plan['meal_plan_7day'][0]['dinner']})\n"
-                f"- Recommended Workout: {n_plan.get('workout_plan', {}).get('exercise_type')} ({n_plan.get('workout_plan', {}).get('daily_step_target')} steps/day)"
+            ai_result = generate_dietitian_guidance(
+                user_message=input_data.message,
+                profile_data=profile_dict,
+                n_plan=n_plan
             )
-            memory_context = (memory_context or "") + nut_summary
         except Exception as ne:
-            print("[ChatRoutes] Nutrition plan generation error:", ne)
-
-    # 5. Generate AI Health Response incorporating Health Profile & Health Memory
-    ai_result = await generate_health_guidance(
-        user_message=input_data.message,
-        profile_data=profile_dict,
-        conversation_history=history_msgs,
-        memory_context=memory_context
-    )
+            print("[ChatRoutes] Dietitian plan generation fallback error:", ne)
+            ai_result = await generate_health_guidance(
+                user_message=input_data.message,
+                profile_data=profile_dict,
+                conversation_history=history_msgs,
+                memory_context=memory_context
+            )
+    else:
+        ai_result = await generate_health_guidance(
+            user_message=input_data.message,
+            profile_data=profile_dict,
+            conversation_history=history_msgs,
+            memory_context=memory_context
+        )
 
     # Save assistant message
     assistant_msg_db = Message(

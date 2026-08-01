@@ -7,6 +7,180 @@ from services.colab_agent import route_triage, query_colab_endpoint
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
+NUTRITION_KEYWORDS = [
+    "lose weight", "weight loss", "gain weight", "muscle gain", "fat loss",
+    "diet", "diet plan", "meal plan", "calories", "calorie target", "calorie deficit",
+    "macro", "macros", "protein", "carbohydrates", "carbs", "fats", "fat", "fiber",
+    "hydration", "water intake", "what to eat", "what should i eat", "food to eat",
+    "food to avoid", "grocery list", "grocery", "workout", "exercise", "daily routine",
+    "diabetes diet", "diabetic diet", "thyroid diet", "pcos diet", "pcos",
+    "cholesterol", "high cholesterol", "hypertension", "blood pressure diet",
+    "fatty liver", "liver diet", "kidney diet", "high protein", "low carb",
+    "vegetarian", "vegan", "jain diet", "keto", "7-day meal plan", "7 day meal plan",
+    "7 day plan", "dietitian", "nutrition", "nutritionist", "explain my report",
+    "suggest food", "food according to report", "fitness", "healthy eating",
+    "what should i eat daily", "food", "meals", "meal", "eating", "eat"
+]
+
+def is_nutrition_intent(message: str) -> bool:
+    """Detects whether a user message expresses nutrition, diet, food, or lifestyle intent."""
+    msg = (message or "").lower()
+    return any(k in msg for k in NUTRITION_KEYWORDS)
+
+def generate_dietitian_guidance(
+    user_message: str,
+    profile_data: Optional[Dict[str, Any]],
+    n_plan: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Constructs a comprehensive, personalized AI Dietitian response with macros,
+    7-day Indian meal plan, 9-group grocery list, hydration schedule, and workout targets.
+    """
+    age = profile_data.get("age", 30) if profile_data else 30
+    gender = profile_data.get("gender", "Unspecified") if profile_data else "Unspecified"
+    height = profile_data.get("height_cm", 170.0) if profile_data else 170.0
+    weight = profile_data.get("weight_kg", 70.0) if profile_data else 70.0
+    conditions = profile_data.get("conditions", []) if profile_data else []
+    allergies = profile_data.get("allergies", []) if profile_data else []
+    goals = profile_data.get("goals", []) if profile_data else []
+
+    t = n_plan.get("targets", {})
+    t_cal = t.get("target_calories", n_plan.get("daily_calories", 1600))
+    p_g = t.get("protein_g", 100)
+    c_g = t.get("carbs_g", 150)
+    f_g = t.get("fat_g", 50)
+    fib_g = t.get("fiber_g", 30)
+    bmi = n_plan.get("metrics", {}).get("bmi", 24.2)
+    bmr = n_plan.get("metrics", {}).get("bmr", 1500)
+    tdee = n_plan.get("metrics", {}).get("tdee", 1900)
+
+    rules = n_plan.get("diet_rules", {})
+    foods_eat = rules.get("foods_to_eat", n_plan.get("foods_to_eat", []))
+    foods_avoid = rules.get("foods_to_avoid", n_plan.get("foods_to_avoid", []))
+    clinical_notes = rules.get("clinical_notes", n_plan.get("clinical_notes", []))
+
+    meal_7day = n_plan.get("meal_plan_7day", n_plan.get("meal_plan", []))
+    grocery = n_plan.get("grocery_list", {})
+    workout = n_plan.get("workout_plan", {})
+    hydration = n_plan.get("hydration", {})
+    hydration_text = n_plan.get("hydration_goal", f"{hydration.get('daily_target_liters', 3.0)} Liters/day")
+
+    # Format 7-Day Meal Plan
+    meal_lines = []
+    for day_item in meal_7day:
+        d_name = day_item.get("day", "Day")
+        bf = day_item.get("breakfast", "")
+        sn1 = day_item.get("mid_morning_snack", day_item.get("morning_snack", ""))
+        ln = day_item.get("lunch", "")
+        sn2 = day_item.get("evening_snack", "")
+        dn = day_item.get("dinner", "")
+        meal_lines.append(
+            f"**{d_name}**:\n"
+            f"  - *Breakfast*: {bf}\n"
+            f"  - *Mid-Morning*: {sn1}\n"
+            f"  - *Lunch*: {ln}\n"
+            f"  - *Evening Snack*: {sn2}\n"
+            f"  - *Dinner*: {dn}"
+        )
+    meal_plan_markdown = "\n\n".join(meal_lines)
+
+    # Format Grocery List
+    grocery_lines = []
+    for category, items in grocery.items():
+        if items:
+            grocery_lines.append(f"**{category}**: {', '.join(items[:6])}")
+    grocery_markdown = "\n".join(grocery_lines)
+
+    # Format Clinical Notes
+    c_note_str = " ".join(clinical_notes) if clinical_notes else "Maintain balanced nutrition, adequate hydration, and regular exercise."
+
+    reply_markdown = f"""## 🥗 HealthAI Personal AI Dietitian Assessment & Plan
+
+Based on your personal medical profile (**Age**: {age}, **Gender**: {gender}, **Height**: {height} cm, **Weight**: {weight} kg, **BMI**: {bmi}, **Goal**: {n_plan.get('goal', 'Wellness')}) and your medical conditions ({', '.join(conditions) if conditions else 'None reported'}):
+
+### 📊 Daily Caloric & Macronutrient Targets
+- 🎯 **Daily Calorie Target**: **{t_cal} kcal/day** *(BMR: {bmr} kcal | TDEE: {tdee} kcal)*
+- 🥩 **Protein**: **{p_g}g**
+- 🌾 **Carbohydrates**: **{c_g}g**
+- 🥑 **Fats**: **{f_g}g**
+- 🥬 **Dietary Fiber**: **{fib_g}g/day**
+- 💧 **Hydration Goal**: **{hydration_text}**
+
+---
+
+### 🥗 Foods to Include & Eat
+{chr(10).join(['- ' + f for f in foods_eat[:8]])}
+
+### 🚫 Foods to Avoid or Limit
+{chr(10).join(['- ' + f for f in foods_avoid[:8]])}
+
+---
+
+### 📅 Complete 7-Day Personalized Meal Plan
+
+{meal_plan_markdown}
+
+---
+
+### 🛒 Categorized Weekly Grocery Shopping List
+{grocery_markdown}
+
+---
+
+### 🏃 Personalized Exercise & Workout Recommendation
+- **Exercise Protocol**: {workout.get('exercise_type', 'Condition-Adapted Fitness')}
+- **Daily Steps Goal**: **{workout.get('daily_steps', workout.get('daily_step_target', 8000))} steps/day**
+- **Cardio Target**: {workout.get('cardio_recommendation', 'Brisk Walking (30-45 mins)')}
+- **Strength Training**: {workout.get('strength_training_target', 'Bodyweight / Resistance Band Exercises')}
+- **Flexibility & Mobility**: {workout.get('flexibility_exercises', 'Stretching / Gentle Yoga')}
+- **Duration & Calorie Burn**: {workout.get('workout_duration', '45 mins/day')} *(Est. {workout.get('calories_burned_estimate', '250-350 kcal')} burned)*
+- ⚠️ **Precautions**: {workout.get('precautions', 'Stay hydrated and listen to your body.')}
+
+---
+
+### ⏰ Recommended Daily Routine
+- **6:30 AM**: Wake up + 500 ml Luke warm water with lemon
+- **7:00 AM**: 30-45 mins Brisk Walk / Workout
+- **8:00 AM**: Healthy Breakfast
+- **11:00 AM**: Mid-Morning Fruit + Almonds / Green Tea
+- **1:00 PM**: Balanced Lunch
+- **5:00 PM**: Evening Tea / Buttermilk + Roasted Makhana
+- **7:30 PM**: Light Dinner
+- **10:30 PM**: Sleep (7.5 - 8 hours target)
+
+---
+
+> 🩺 **Medical & Clinical Note**:
+> {c_note_str}
+> *Disclaimer: This plan is generated for clinical educational and wellness support. Please consult your primary care physician or registered dietitian before embarking on restrictive diets or high-intensity exercise routines, especially if managing underlying medical conditions.*"""
+
+    analysis_card = {
+        "possible_causes": [
+            f"Caloric & macronutrient balance for {n_plan.get('goal', 'health optimization')}",
+            f"Metabolic adaptation for BMI {bmi} ({'Overweight/Obesity' if bmi >= 25 else 'Healthy weight'})",
+            f"Condition-aware dietary requirement ({', '.join(conditions) if conditions else 'General wellness'})"
+        ],
+        "recommended_actions": [
+            f"Target daily caloric intake of {t_cal} kcal/day with {p_g}g protein",
+            f"Maintain hydration of {hydration_text} and hit {workout.get('daily_steps', 8000)} daily steps",
+            "Follow the 7-day Indian meal plan and grocery list provided"
+        ],
+        "warning_signs": [
+            "Dizziness, lethargy, or extreme hunger from sudden caloric drops",
+            "Severe joint or muscle discomfort during workouts",
+            "Unexplained rapid weight gain or loss (seek immediate physician review)"
+        ],
+        "personalized_advice": f"Plan customized for user (Age: {age}, Weight: {weight}kg, Goal: {n_plan.get('goal')}). {c_note_str}",
+        "confidence": 0.95,
+        "ward": "nutrition_dietetics",
+        "assigned_doctor": "Clinical Dietitian & Sports Nutritionist"
+    }
+
+    return {
+        "reply": reply_markdown,
+        "analysis": analysis_card
+    }
+
 async def generate_health_guidance(
     user_message: str,
     profile_data: Optional[Dict[str, Any]],
@@ -94,12 +268,11 @@ ONLY return valid JSON."""
 
     # 4. Built-in High Quality Context-Aware Triage Engine (Fallback / Default)
     query_lower = user_message.lower()
-    
-    # Custom cause/action extraction based on symptoms
+
     possible_causes = ["Viral upper respiratory infection", "Environmental or seasonal allergies", "Dehydration & muscle tension"]
     recommended_actions = ["Maintain adequate hydration (2.5L+ daily)", "Get at least 7.5 hours of restorative sleep", "Monitor body temperature and symptoms closely"]
     warning_signs = ["Sudden severe chest pain or pressure", "Shortness of breath or rapid labored breathing", "High fever persisting over 48 hours", "Confusion or severe dizziness"]
-    
+
     if "fever" in query_lower or "headache" in query_lower or "cold" in query_lower:
         possible_causes = ["Viral infection (flu or common cold)", "Sinusitis / allergic rhinitis", "Physical exhaustion & mild dehydration"]
         recommended_actions = ["Rest in a well-ventilated room", "Increase fluid intake (warm teas, electrolyte solution)", "Use over-the-counter fever reducers if appropriate"]
@@ -110,7 +283,6 @@ ONLY return valid JSON."""
         possible_causes = ["Elevated cortisol & nervous system overload", "Sleep deprivation or disruption of circadian rhythm", "Workload or lifestyle fatigue"]
         recommended_actions = ["Practice 4-7-8 deep breathing exercises", "Limit screen exposure 1 hour before bedtime", "Engage in light 15-minute evening walks"]
 
-    # Build profile-specific personalized advice
     advice_parts = []
     if conditions:
         advice_parts.append(f"Because you reported existing conditions ({', '.join(conditions)}), ensure your vital signs remain stable and monitor for any sudden changes.")
@@ -120,7 +292,7 @@ ONLY return valid JSON."""
         advice_parts.append(f"Remember your documented allergies ({', '.join(allergies)}) when taking any medication or herbal supplement.")
     if goals:
         advice_parts.append(f"To support your health goals ({', '.join(goals)}), prioritize hydration and consistency.")
-    
+
     if not advice_parts:
         advice_parts.append("Based on your profile, maintain balanced nutrition, regular hydration, and consistent sleeping patterns.")
 
