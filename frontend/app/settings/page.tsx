@@ -16,31 +16,31 @@ import {
   Activity, 
   AlertTriangle, 
   Save, 
-  Camera, 
-  Lock, 
-  KeyRound, 
-  LogOut, 
   Download, 
-  Trash2, 
   CheckCircle2, 
   Smartphone, 
-  FileText, 
   Moon, 
-  Sun, 
-  Monitor,
   Home,
   MessageSquare,
-  History,
-  UserCheck,
   Calendar,
-  Sparkles,
   X
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { getToken, removeToken, setUser } from "@/lib/auth";
+import { useLanguage, LanguageCode, UnitSystem } from "@/context/LanguageContext";
+
+interface DeviceItem {
+  provider: string;
+  name: string;
+  connected: boolean;
+  account_id?: string | null;
+  last_sync?: string | null;
+}
 
 export default function SettingsPage() {
   const router = useRouter();
+  const { language: currentLang, units: currentUnits, setLanguage: setGlobalLanguage, setUnits: setGlobalUnits, t } = useLanguage();
+
   const [activeTab, setActiveTab] = useState<"account" | "security" | "notifications" | "privacy" | "appearance" | "language" | "devices" | "danger">("account");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -50,7 +50,6 @@ export default function SettingsPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
   // Security State
   const [currentPass, setCurrentPass] = useState("");
@@ -77,18 +76,13 @@ export default function SettingsPage() {
   const [highContrast, setHighContrast] = useState(false);
 
   // Language & Region State
-  const [language, setLanguage] = useState("English");
+  const [language, setLanguage] = useState<string>("English");
   const [dateFormat, setDateFormat] = useState("YYYY-MM-DD");
   const [timeFormat, setTimeFormat] = useState("12h");
-  const [units, setUnits] = useState("Metric");
+  const [units, setUnits] = useState<string>("Metric");
 
   // Connected Devices State
-  const [devices, setDevices] = useState({
-    googleFit: true,
-    appleHealth: false,
-    fitbit: false,
-    samsungHealth: false
-  });
+  const [deviceList, setDeviceList] = useState<DeviceItem[]>([]);
 
   // Danger Zone Delete Modal
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -110,13 +104,25 @@ export default function SettingsPage() {
         if (res.settings) {
           setPhone(res.settings.phone_number || "");
           setTheme(res.settings.theme || "dark");
-          setLanguage(res.settings.language || "English");
-          setUnits(res.settings.units || "Metric");
+          
+          const backendLang = res.settings.language || "English";
+          const backendUnits = res.settings.units || "Metric";
+          setLanguage(backendLang);
+          setUnits(backendUnits);
+          setGlobalLanguage(backendLang as LanguageCode);
+          setGlobalUnits(backendUnits as UnitSystem);
+
           setDateFormat(res.settings.date_format || "YYYY-MM-DD");
           setTimeFormat(res.settings.time_format || "12h");
           setReduceAnim(Boolean(res.settings.reduce_animations));
           setHighContrast(Boolean(res.settings.high_contrast));
           setFontSize(res.settings.font_size || "medium");
+        }
+
+        // Fetch Connected Devices
+        const devData = await api.getConnectedDevices();
+        if (Array.isArray(devData)) {
+          setDeviceList(devData);
         }
       } catch (err) {
         console.error(err);
@@ -127,7 +133,6 @@ export default function SettingsPage() {
     loadData();
   }, [router]);
 
-  // Evaluate Password Strength
   const handleNewPassChange = (val: string) => {
     setNewPass(val);
     if (!val) setPassStrength("");
@@ -193,11 +198,11 @@ export default function SettingsPage() {
   };
 
   const handleAppearanceSave = async (selectedTheme?: "dark" | "light" | "system") => {
-    const t = selectedTheme || theme;
+    const tVal = selectedTheme || theme;
     setSaving(true);
     try {
       await api.updateSettingsAppearance({
-        theme: t,
+        theme: tVal,
         font_size: fontSize,
         reduce_animations: reduceAnim ? 1 : 0,
         high_contrast: highContrast ? 1 : 0
@@ -213,17 +218,39 @@ export default function SettingsPage() {
   const handleLanguageSave = async () => {
     setSaving(true);
     try {
+      setGlobalLanguage(language as LanguageCode);
+      setGlobalUnits(units as UnitSystem);
       await api.updateSettingsLanguage({
         language,
         date_format: dateFormat,
         time_format: timeFormat,
         units
       });
-      setMessage({ text: "Language & Region preferences saved!", type: "success" });
+      setMessage({ text: "Language & Region preferences saved successfully!", type: "success" });
     } catch (err: any) {
       setMessage({ text: err.message || "Language save failed", type: "error" });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleToggleDevice = async (providerKey: string, currentlyConnected: boolean) => {
+    try {
+      if (currentlyConnected) {
+        await api.disconnectDevice(providerKey);
+      } else {
+        await api.connectDevice(providerKey, `${name.toLowerCase().replace(/\s+/g, '_')}_${providerKey}`);
+      }
+      const updated = await api.getConnectedDevices();
+      if (Array.isArray(updated)) {
+        setDeviceList(updated);
+      }
+      setMessage({
+        text: `${providerKey.replace('_', ' ').toUpperCase()} ${currentlyConnected ? "disconnected" : "connected"} successfully!`,
+        type: "success"
+      });
+    } catch (err: any) {
+      setMessage({ text: err.message || "Device connection toggle failed", type: "error" });
     }
   };
 
@@ -268,14 +295,14 @@ export default function SettingsPage() {
   };
 
   const tabs = [
-    { id: "account", label: "Account Profile", icon: User },
-    { id: "security", label: "Security & Passwords", icon: ShieldCheck },
-    { id: "notifications", label: "Health Reminders", icon: Bell },
-    { id: "privacy", label: "Data & Export", icon: Download },
-    { id: "appearance", label: "Appearance", icon: Palette },
-    { id: "language", label: "Language & Region", icon: Globe },
-    { id: "devices", label: "Connected Devices", icon: Smartphone },
-    { id: "danger", label: "Danger Zone", icon: AlertTriangle },
+    { id: "account", label: t("account"), icon: User },
+    { id: "security", label: t("security"), icon: ShieldCheck },
+    { id: "notifications", label: t("notifications"), icon: Bell },
+    { id: "privacy", label: t("privacy"), icon: Download },
+    { id: "appearance", label: t("appearance"), icon: Palette },
+    { id: "language", label: t("language"), icon: Globe },
+    { id: "devices", label: t("devices"), icon: Smartphone },
+    { id: "danger", label: t("dangerZone"), icon: AlertTriangle },
   ];
 
   if (loading) {
@@ -301,7 +328,7 @@ export default function SettingsPage() {
               </div>
             </div>
             <div>
-              <h1 className="text-2xl font-extrabold text-white">Healthcare Account Center</h1>
+              <h1 className="text-2xl font-extrabold text-white">{t("settings")}</h1>
               <p className="text-xs text-slate-400 mt-0.5">
                 Manage your credentials, security preferences, health reminders, and data exports.
               </p>
@@ -371,7 +398,7 @@ export default function SettingsPage() {
                   <form onSubmit={handleAccountSave} className="space-y-6">
                     <div className="border-b border-slate-800 pb-4 flex items-center justify-between">
                       <div>
-                        <h3 className="text-base font-extrabold text-white">Account Information</h3>
+                        <h3 className="text-base font-extrabold text-white">{t("account")}</h3>
                         <p className="text-xs text-slate-400">Update your primary identity and contact details.</p>
                       </div>
                       <span className="px-3 py-1 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 text-[10px] font-bold uppercase">
@@ -379,32 +406,14 @@ export default function SettingsPage() {
                       </span>
                     </div>
 
-                    {/* Avatar Header */}
-                    <div className="flex items-center gap-4 pt-2">
-                      <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-cyan-500 to-indigo-500 p-0.5 relative group">
-                        <div className="w-full h-full bg-[#0b1329] rounded-[22px] flex items-center justify-center font-extrabold text-xl text-white">
-                          {name ? name.charAt(0).toUpperCase() : "U"}
-                        </div>
-                        <label className="absolute bottom-0 right-0 p-1.5 rounded-full bg-cyan-500 text-slate-950 cursor-pointer shadow-lg hover:scale-110 transition-transform">
-                          <Camera className="w-3.5 h-3.5" />
-                          <input type="file" accept="image/*" className="hidden" />
-                        </label>
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-white text-sm">{name || "HealthAI User"}</h4>
-                        <p className="text-xs text-slate-400">{email}</p>
-                      </div>
-                    </div>
-
-                    {/* Form Fields */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 text-xs">
+                    <div className="space-y-4 text-xs">
                       <div>
                         <label className="block text-slate-400 font-bold mb-1.5">Full Name</label>
                         <input
                           type="text"
                           value={name}
                           onChange={(e) => setName(e.target.value)}
-                          className="w-full bg-slate-900 border border-slate-700 rounded-2xl px-4 py-3 text-white font-medium focus:border-cyan-500 focus:outline-none"
+                          className="w-full bg-slate-900 border border-slate-700 rounded-2xl px-4 py-3 text-white focus:border-cyan-500 focus:outline-none"
                           required
                         />
                       </div>
@@ -415,19 +424,19 @@ export default function SettingsPage() {
                           type="email"
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
-                          className="w-full bg-slate-900 border border-slate-700 rounded-2xl px-4 py-3 text-white font-medium focus:border-cyan-500 focus:outline-none"
+                          className="w-full bg-slate-900 border border-slate-700 rounded-2xl px-4 py-3 text-white focus:border-cyan-500 focus:outline-none"
                           required
                         />
                       </div>
 
-                      <div className="sm:col-span-2">
-                        <label className="block text-slate-400 font-bold mb-1.5">Phone Number (Optional)</label>
+                      <div>
+                        <label className="block text-slate-400 font-bold mb-1.5">Phone Number (For Security SMS Alerts)</label>
                         <input
                           type="tel"
                           value={phone}
-                          placeholder="+1 (555) 000-0000"
                           onChange={(e) => setPhone(e.target.value)}
-                          className="w-full bg-slate-900 border border-slate-700 rounded-2xl px-4 py-3 text-white font-medium focus:border-cyan-500 focus:outline-none"
+                          placeholder="+1 234 567 8900"
+                          className="w-full bg-slate-900 border border-slate-700 rounded-2xl px-4 py-3 text-white focus:border-cyan-500 focus:outline-none"
                         />
                       </div>
                     </div>
@@ -436,10 +445,9 @@ export default function SettingsPage() {
                       <button
                         type="submit"
                         disabled={saving}
-                        className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-cyan-500 text-slate-950 font-bold text-xs hover:brightness-110 transition-all shadow-md shadow-cyan-500/20"
+                        className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-cyan-500 text-slate-950 font-bold text-xs hover:brightness-110 transition-all disabled:opacity-50 shadow-md shadow-cyan-500/20"
                       >
-                        <Save className="w-4 h-4" />
-                        {saving ? "Saving Changes..." : "Save Account Info"}
+                        <Save className="w-4 h-4" /> {saving ? "Saving..." : t("save")}
                       </button>
                     </div>
                   </form>
@@ -449,8 +457,8 @@ export default function SettingsPage() {
                 {activeTab === "security" && (
                   <form onSubmit={handlePasswordSave} className="space-y-6">
                     <div className="border-b border-slate-800 pb-4">
-                      <h3 className="text-base font-extrabold text-white">Security & Password Management</h3>
-                      <p className="text-xs text-slate-400">Update your account password and manage active sessions.</p>
+                      <h3 className="text-base font-extrabold text-white">{t("security")}</h3>
+                      <p className="text-xs text-slate-400">Manage password security, 2FA, and active session devices.</p>
                     </div>
 
                     <div className="space-y-4 text-xs">
@@ -460,29 +468,28 @@ export default function SettingsPage() {
                           type="password"
                           value={currentPass}
                           onChange={(e) => setCurrentPass(e.target.value)}
-                          className="w-full bg-slate-900 border border-slate-700 rounded-2xl px-4 py-3 text-white font-medium focus:border-cyan-500 focus:outline-none"
+                          className="w-full bg-slate-900 border border-slate-700 rounded-2xl px-4 py-3 text-white focus:border-cyan-500 focus:outline-none"
                           required
                         />
                       </div>
 
                       <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <label className="text-slate-400 font-bold">New Password</label>
-                          {passStrength && (
-                            <span className={`font-extrabold text-[10px] uppercase ${
-                              passStrength === "Strong" ? "text-emerald-400" : passStrength === "Medium" ? "text-amber-400" : "text-rose-400"
-                            }`}>
-                              Strength: {passStrength}
-                            </span>
-                          )}
-                        </div>
+                        <label className="block text-slate-400 font-bold mb-1.5">New Password</label>
                         <input
                           type="password"
                           value={newPass}
                           onChange={(e) => handleNewPassChange(e.target.value)}
-                          className="w-full bg-slate-900 border border-slate-700 rounded-2xl px-4 py-3 text-white font-medium focus:border-cyan-500 focus:outline-none"
+                          className="w-full bg-slate-900 border border-slate-700 rounded-2xl px-4 py-3 text-white focus:border-cyan-500 focus:outline-none"
                           required
                         />
+                        {passStrength && (
+                          <div className="mt-2 flex items-center gap-2 text-[11px]">
+                            <span className="text-slate-400 font-bold">Strength:</span>
+                            <span className={`font-extrabold ${
+                              passStrength === "Weak" ? "text-rose-400" : passStrength === "Medium" ? "text-amber-400" : "text-teal-400"
+                            }`}>{passStrength}</span>
+                          </div>
+                        )}
                       </div>
 
                       <div>
@@ -491,29 +498,27 @@ export default function SettingsPage() {
                           type="password"
                           value={confirmPass}
                           onChange={(e) => setConfirmPass(e.target.value)}
-                          className="w-full bg-slate-900 border border-slate-700 rounded-2xl px-4 py-3 text-white font-medium focus:border-cyan-500 focus:outline-none"
+                          className="w-full bg-slate-900 border border-slate-700 rounded-2xl px-4 py-3 text-white focus:border-cyan-500 focus:outline-none"
                           required
                         />
                       </div>
                     </div>
 
-                    <div className="pt-4 border-t border-slate-800 flex flex-wrap items-center justify-between gap-4">
+                    <div className="pt-4 border-t border-slate-800 flex justify-between items-center">
                       <button
                         type="button"
                         onClick={handleLogoutAll}
-                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 hover:text-rose-400 font-bold text-xs transition-all border border-slate-700"
+                        className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition-all"
                       >
-                        <LogOut className="w-4 h-4 text-rose-400" />
-                        Logout from All Active Devices
+                        Logout All Other Devices
                       </button>
 
                       <button
                         type="submit"
                         disabled={saving}
-                        className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-cyan-500 text-slate-950 font-bold text-xs hover:brightness-110 transition-all shadow-md shadow-cyan-500/20"
+                        className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-cyan-500 text-slate-950 font-bold text-xs hover:brightness-110 transition-all disabled:opacity-50 shadow-md shadow-cyan-500/20"
                       >
-                        <KeyRound className="w-4 h-4" />
-                        {saving ? "Updating..." : "Update Password"}
+                        <Save className="w-4 h-4" /> {saving ? "Updating..." : "Update Password"}
                       </button>
                     </div>
                   </form>
@@ -523,87 +528,64 @@ export default function SettingsPage() {
                 {activeTab === "notifications" && (
                   <div className="space-y-6">
                     <div className="border-b border-slate-800 pb-4">
-                      <h3 className="text-base font-extrabold text-white">Health & Push Notification Reminders</h3>
-                      <p className="text-xs text-slate-400">Customize intelligent medication, hydration, and report alerts.</p>
+                      <h3 className="text-base font-extrabold text-white">{t("notifications")}</h3>
+                      <p className="text-xs text-slate-400">Configure medication, hydration, and report notification alerts.</p>
                     </div>
 
-                    <div className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                       {[
-                        { key: "medication", label: "Medication Reminders", desc: "Timely alerts for prescribed doses" },
+                        { key: "medication", label: "Medication Reminders", desc: "Daily dosage & schedule alerts" },
                         { key: "hydration", label: "Hydration Reminders", desc: "Water intake prompts" },
-                        { key: "exercise", label: "Exercise & Activity Reminders", desc: "Daily movement targets" },
-                        { key: "sleep", label: "Sleep & Circadian Reminders", desc: "Bedtime wind-down notifications" },
-                        { key: "appointment", label: "Doctor Appointment Alerts", desc: "Upcoming clinical visits" },
-                        { key: "report", label: "Report Analysis Notifications", desc: "Alerts when document OCR completes" },
-                        { key: "email", label: "Email Summaries", desc: "Weekly health score digests" },
-                        { key: "push", label: "Browser Push Notifications", desc: "Live instant desktop notifications" },
+                        { key: "exercise", label: "Exercise & Activity Reminders", desc: "Workout and step targets" },
+                        { key: "sleep", label: "Sleep Reminders", desc: "Bedtime & sleep schedule alerts" },
+                        { key: "appointment", label: "Doctor Appointments", desc: "Clinical appointment notifications" },
+                        { key: "report", label: "Lab Report Alerts", desc: "OCR analysis completion updates" }
                       ].map((item) => (
-                        <div key={item.key} className="flex items-center justify-between p-4 rounded-2xl bg-slate-900/80 border border-slate-800 text-xs">
+                        <div key={item.key} className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 flex items-center justify-between">
                           <div>
                             <h4 className="font-bold text-white">{item.label}</h4>
-                            <p className="text-slate-400 text-[11px] mt-0.5">{item.desc}</p>
+                            <p className="text-slate-400 text-[11px]">{item.desc}</p>
                           </div>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setNotifs(prev => ({ ...prev, [item.key]: !prev[item.key as keyof typeof prev] }));
-                              handleNotificationSave();
-                            }}
-                            className={`w-12 h-6 rounded-full transition-colors relative p-1 ${
-                              notifs[item.key as keyof typeof notifs] ? "bg-cyan-500" : "bg-slate-800 border border-slate-700"
-                            }`}
-                          >
-                            <div className={`w-4 h-4 rounded-full bg-slate-950 transition-transform ${
-                              notifs[item.key as keyof typeof notifs] ? "translate-x-6" : "translate-x-0"
-                            }`} />
-                          </button>
+                          <input
+                            type="checkbox"
+                            checked={notifs[item.key as keyof typeof notifs]}
+                            onChange={(e) => setNotifs(prev => ({ ...prev, [item.key]: e.target.checked }))}
+                            className="w-5 h-5 rounded accent-cyan-500"
+                          />
                         </div>
                       ))}
+                    </div>
+
+                    <div className="pt-4 border-t border-slate-800 flex justify-end">
+                      <button
+                        onClick={handleNotificationSave}
+                        className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-cyan-500 text-slate-950 font-bold text-xs hover:brightness-110 transition-all shadow-md shadow-cyan-500/20"
+                      >
+                        <Save className="w-4 h-4" /> {t("save")}
+                      </button>
                     </div>
                   </div>
                 )}
 
-                {/* 4. Privacy & Health Data Section */}
+                {/* 4. Privacy & Data Export Section */}
                 {activeTab === "privacy" && (
                   <div className="space-y-6">
                     <div className="border-b border-slate-800 pb-4">
-                      <h3 className="text-base font-extrabold text-white">Privacy & Medical Data Portability</h3>
-                      <p className="text-xs text-slate-400">Download your full medical history or clear specific data logs.</p>
+                      <h3 className="text-base font-extrabold text-white">{t("privacy")}</h3>
+                      <p className="text-xs text-slate-400">Export your complete personal health record data.</p>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                      <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-3">
-                        <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 border border-cyan-400/40 flex items-center justify-center">
-                          <Download className="w-5 h-5 text-cyan-400" />
-                        </div>
-                        <div>
-                          <h4 className="font-bold text-white text-sm">Download Complete Medical Record</h4>
-                          <p className="text-slate-400 text-[11px] mt-1">Export all profile info, lab trends, and timeline events in JSON format.</p>
-                        </div>
-                        <button
-                          onClick={handleExportData}
-                          className="w-full py-2.5 rounded-xl bg-cyan-500 text-slate-950 font-bold hover:brightness-110 transition-all flex items-center justify-center gap-2"
-                        >
-                          <Download className="w-4 h-4" /> Export Health Record
-                        </button>
-                      </div>
-
-                      <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-3">
-                        <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-400/40 flex items-center justify-center">
-                          <FileText className="w-5 h-5 text-indigo-400" />
-                        </div>
-                        <div>
-                          <h4 className="font-bold text-white text-sm">Document & Timeline Purge</h4>
-                          <p className="text-slate-400 text-[11px] mt-1">Manage or delete individual reports directly from your library.</p>
-                        </div>
-                        <Link
-                          href="/reports"
-                          className="w-full py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-cyan-300 font-bold hover:bg-slate-700 transition-all flex items-center justify-center gap-2"
-                        >
-                          Manage Documents Library
-                        </Link>
-                      </div>
+                    <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-3 text-xs">
+                      <h4 className="font-bold text-white text-sm">Download Full Health Record Archive</h4>
+                      <p className="text-slate-400 leading-relaxed">
+                        Generate a comprehensive JSON export containing your health profile, lab measurements, timeline events, AI consultations, and medication safety reports.
+                      </p>
+                      <button
+                        onClick={handleExportData}
+                        className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-teal-500 text-slate-950 font-extrabold text-xs hover:brightness-110 transition-all shadow-md shadow-teal-500/20"
+                      >
+                        <Download className="w-4 h-4" /> Export Health JSON Data
+                      </button>
                     </div>
                   </div>
                 )}
@@ -612,68 +594,33 @@ export default function SettingsPage() {
                 {activeTab === "appearance" && (
                   <div className="space-y-6">
                     <div className="border-b border-slate-800 pb-4">
-                      <h3 className="text-base font-extrabold text-white">Appearance & Visual Preferences</h3>
-                      <p className="text-xs text-slate-400">Customize color theme, typography, and animation settings.</p>
+                      <h3 className="text-base font-extrabold text-white">{t("appearance")}</h3>
+                      <p className="text-xs text-slate-400">Customize color themes, fonts, and animation speeds.</p>
                     </div>
 
-                    {/* Theme Picker */}
-                    <div className="space-y-2">
-                      <label className="block text-xs font-bold text-slate-400">Color Theme</label>
+                    <div>
+                      <label className="block text-slate-400 font-bold mb-2 text-xs">{t("theme")}</label>
                       <div className="grid grid-cols-3 gap-3">
                         {[
                           { id: "dark", label: "Dark Mode", icon: Moon },
-                          { id: "light", label: "Light Mode", icon: Sun },
-                          { id: "system", label: "System Sync", icon: Monitor }
+                          { id: "light", label: "Light Mode", icon: Activity },
+                          { id: "system", label: "System", icon: Settings }
                         ].map((th) => {
                           const Icon = th.icon;
                           const isSel = theme === th.id;
                           return (
                             <button
                               key={th.id}
-                              onClick={() => {
-                                setTheme(th.id as any);
-                                handleAppearanceSave(th.id as any);
-                              }}
+                              onClick={() => { setTheme(th.id as any); handleAppearanceSave(th.id as any); }}
                               className={`p-4 rounded-2xl border text-xs font-bold flex flex-col items-center gap-2 transition-all ${
-                                isSel
-                                  ? "bg-cyan-950/60 border-cyan-400 text-cyan-200 shadow-md shadow-cyan-500/20"
-                                  : "bg-slate-900/60 border-slate-800 text-slate-400 hover:text-slate-200"
+                                isSel ? "bg-cyan-500/20 border-cyan-400 text-cyan-300" : "bg-slate-900 border-slate-800 text-slate-400 hover:text-white"
                               }`}
                             >
-                              <Icon className={`w-5 h-5 ${isSel ? "text-cyan-400" : "text-slate-400"}`} />
+                              <Icon className="w-5 h-5" />
                               <span>{th.label}</span>
                             </button>
                           );
                         })}
-                      </div>
-                    </div>
-
-                    {/* Font Size & Contrast Toggles */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs pt-2">
-                      <div>
-                        <label className="block text-slate-400 font-bold mb-1.5">Font Size</label>
-                        <select
-                          value={fontSize}
-                          onChange={(e) => { setFontSize(e.target.value); handleAppearanceSave(); }}
-                          className="w-full bg-slate-900 border border-slate-700 rounded-2xl px-4 py-3 text-white focus:border-cyan-500 focus:outline-none"
-                        >
-                          <option value="small">Small</option>
-                          <option value="medium">Medium (Default)</option>
-                          <option value="large">Large</option>
-                        </select>
-                      </div>
-
-                      <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-900/80 border border-slate-800">
-                        <div>
-                          <h4 className="font-bold text-white">Reduce Animations</h4>
-                          <p className="text-slate-400 text-[11px]">Minimize UI transitions</p>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={reduceAnim}
-                          onChange={(e) => { setReduceAnim(e.target.checked); handleAppearanceSave(); }}
-                          className="w-5 h-5 rounded accent-cyan-500"
-                        />
                       </div>
                     </div>
                   </div>
@@ -683,7 +630,7 @@ export default function SettingsPage() {
                 {activeTab === "language" && (
                   <div className="space-y-6">
                     <div className="border-b border-slate-800 pb-4">
-                      <h3 className="text-base font-extrabold text-white">Language & Regional Preferences</h3>
+                      <h3 className="text-base font-extrabold text-white">{t("language")}</h3>
                       <p className="text-xs text-slate-400">Configure localization, date formats, and measurement units.</p>
                     </div>
 
@@ -697,19 +644,21 @@ export default function SettingsPage() {
                         >
                           <option value="English">English</option>
                           <option value="Hindi">Hindi (हिंदी)</option>
-                          <option value="Marathi">Marathi (मराठी)</option>
+                          <option value="Spanish">Spanish (Español)</option>
+                          <option value="French">French (Français)</option>
+                          <option value="German">German (Deutsch)</option>
                         </select>
                       </div>
 
                       <div>
-                        <label className="block text-slate-400 font-bold mb-1.5">Measurement Units</label>
+                        <label className="block text-slate-400 font-bold mb-1.5">{t("units")}</label>
                         <select
                           value={units}
                           onChange={(e) => setUnits(e.target.value)}
                           className="w-full bg-slate-900 border border-slate-700 rounded-2xl px-4 py-3 text-white focus:border-cyan-500 focus:outline-none"
                         >
-                          <option value="Metric">Metric (kg, cm, Celsius)</option>
-                          <option value="Imperial">Imperial (lbs, ft, Fahrenheit)</option>
+                          <option value="Metric">{t("metric")}</option>
+                          <option value="Imperial">{t("imperial")}</option>
                         </select>
                       </div>
 
@@ -742,9 +691,10 @@ export default function SettingsPage() {
                     <div className="pt-4 border-t border-slate-800 flex justify-end">
                       <button
                         onClick={handleLanguageSave}
-                        className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-cyan-500 text-slate-950 font-bold text-xs hover:brightness-110 transition-all shadow-md shadow-cyan-500/20"
+                        disabled={saving}
+                        className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-cyan-500 text-slate-950 font-bold text-xs hover:brightness-110 transition-all shadow-md shadow-cyan-500/20 disabled:opacity-50"
                       >
-                        <Save className="w-4 h-4" /> Save Regional Settings
+                        <Save className="w-4 h-4" /> {saving ? "Saving..." : t("save")}
                       </button>
                     </div>
                   </div>
@@ -754,41 +704,38 @@ export default function SettingsPage() {
                 {activeTab === "devices" && (
                   <div className="space-y-6">
                     <div className="border-b border-slate-800 pb-4">
-                      <h3 className="text-base font-extrabold text-white">Connected Health Integrations</h3>
+                      <h3 className="text-base font-extrabold text-white">{t("devices")}</h3>
                       <p className="text-xs text-slate-400">Sync fitness wearables and smart health platforms.</p>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                      {[
-                        { key: "googleFit", name: "Google Fit", icon: Activity, desc: "Step counts, heart rate & activity" },
-                        { key: "appleHealth", name: "Apple Health", icon: Smartphone, desc: "ECG, sleep & vital trends" },
-                        { key: "fitbit", name: "Fitbit", icon: Activity, desc: "Resting HR, sleep & calories" },
-                        { key: "samsungHealth", name: "Samsung Health", icon: Smartphone, desc: "Blood oxygen & daily metrics" }
-                      ].map((dev) => {
-                        const Icon = dev.icon;
-                        const isConn = devices[dev.key as keyof typeof devices];
+                      {deviceList.map((dev) => {
+                        const isConn = dev.connected;
+                        const syncFormatted = dev.last_sync 
+                          ? `${t("lastSynced")}: ${new Date(dev.last_sync).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` 
+                          : "Not Synced Yet";
 
                         return (
-                          <div key={dev.key} className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 flex items-center justify-between">
+                          <div key={dev.provider} className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 flex items-center justify-between">
                             <div className="flex items-center gap-3">
                               <div className={`w-10 h-10 rounded-2xl flex items-center justify-center border ${
                                 isConn ? "bg-teal-500/20 border-teal-400/40 text-teal-300" : "bg-slate-800 border-slate-700 text-slate-400"
                               }`}>
-                                <Icon className="w-5 h-5" />
+                                <Activity className="w-5 h-5" />
                               </div>
                               <div>
                                 <h4 className="font-bold text-white">{dev.name}</h4>
-                                <p className="text-slate-400 text-[11px]">{dev.desc}</p>
+                                <p className="text-slate-400 text-[11px]">{syncFormatted}</p>
                               </div>
                             </div>
 
                             <button
-                              onClick={() => setDevices(prev => ({ ...prev, [dev.key]: !prev[dev.key as keyof typeof prev] }))}
+                              onClick={() => handleToggleDevice(dev.provider, isConn)}
                               className={`px-3 py-1.5 rounded-xl font-extrabold text-[11px] transition-all ${
-                                isConn ? "bg-teal-500/20 text-teal-300 border border-teal-500/40" : "bg-slate-800 text-slate-400 border border-slate-700 hover:text-white"
+                                isConn ? "bg-teal-500/20 text-teal-300 border border-teal-500/40 hover:bg-rose-500/20 hover:text-rose-300 hover:border-rose-500/40" : "bg-slate-800 text-slate-400 border border-slate-700 hover:text-white"
                               }`}
                             >
-                              {isConn ? "Connected" : "Connect"}
+                              {isConn ? t("connected") : "Connect"}
                             </button>
                           </div>
                         );
@@ -802,14 +749,14 @@ export default function SettingsPage() {
                   <div className="space-y-6">
                     <div className="border-b border-rose-500/30 pb-4">
                       <h3 className="text-base font-extrabold text-rose-400 flex items-center gap-2">
-                        <AlertTriangle className="w-5 h-5" /> Danger Zone & Account Deletion
+                        <AlertTriangle className="w-5 h-5" /> {t("dangerZone")}
                       </h3>
                       <p className="text-xs text-rose-300/80">Irreversible account destruction actions.</p>
                     </div>
 
                     <div className="p-5 rounded-2xl bg-rose-950/20 border border-rose-500/30 space-y-4 text-xs text-rose-200">
                       <div>
-                        <h4 className="font-extrabold text-sm text-rose-300">Permanently Delete HealthAI Account</h4>
+                        <h4 className="font-extrabold text-sm text-rose-300">{t("deleteAccount")}</h4>
                         <p className="text-slate-400 mt-1 leading-relaxed">
                           Once you delete your account, all health profiles, consultation histories, timeline events, uploaded medical documents, and AI memory records will be permanently erased.
                         </p>
@@ -819,7 +766,7 @@ export default function SettingsPage() {
                         onClick={() => setShowDeleteModal(true)}
                         className="px-6 py-2.5 rounded-xl bg-rose-600 text-white font-extrabold hover:bg-rose-500 transition-all shadow-lg shadow-rose-600/30"
                       >
-                        Delete Account & Erase All Records
+                        {t("deleteAccount")}
                       </button>
                     </div>
                   </div>
@@ -861,14 +808,14 @@ export default function SettingsPage() {
                 onClick={() => setShowDeleteModal(false)}
                 className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 font-bold text-xs hover:text-white"
               >
-                Cancel
+                {t("cancel")}
               </button>
               <button
                 onClick={handleDeleteAccount}
                 disabled={deleting || !deletePass}
                 className="px-5 py-2 rounded-xl bg-rose-600 text-white font-extrabold text-xs hover:bg-rose-500 disabled:opacity-50"
               >
-                {deleting ? "Deleting..." : "Permanently Delete"}
+                {deleting ? "Deleting..." : t("deleteAccount")}
               </button>
             </div>
           </div>

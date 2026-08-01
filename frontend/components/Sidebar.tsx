@@ -17,10 +17,12 @@ import {
   FileText
 } from "lucide-react";
 import { removeToken } from "@/lib/auth";
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const { t } = useLanguage();
 
   const handleLogout = () => {
     removeToken();
@@ -28,13 +30,13 @@ export default function Sidebar() {
   };
 
   const navItems = [
-    { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-    { label: "Health Timeline", href: "/timeline", icon: Calendar },
-    { label: "Medical Reports", href: "/reports", icon: FileText },
-    { label: "AI Consultation", href: "/chat", icon: MessageSquare },
-    { label: "Health Profile", href: "/health-profile", icon: UserCheck },
-    { label: "Consultation History", href: "/history", icon: History },
-    { label: "Settings", href: "/settings", icon: Settings },
+    { label: t("dashboard"), href: "/dashboard", icon: LayoutDashboard },
+    { label: t("timeline"), href: "/timeline", icon: Calendar },
+    { label: t("medicalReports"), href: "/reports", icon: FileText },
+    { label: t("consultation"), href: "/chat", icon: MessageSquare },
+    { label: t("healthProfile"), href: "/health-profile", icon: UserCheck },
+    { label: t("consultationHistory") || "Consultation History", href: "/history", icon: History },
+    { label: t("settings"), href: "/settings", icon: Settings },
   ];
 
   return (
@@ -103,7 +105,7 @@ export default function Sidebar() {
           className="flex items-center gap-3 w-full px-4 py-3 rounded-2xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 font-medium text-sm transition-all border border-transparent hover:border-rose-500/30"
         >
           <LogOut className="w-5 h-5" />
-          Logout Account
+          {t("logout")}
         </button>
       </div>
     </aside>
